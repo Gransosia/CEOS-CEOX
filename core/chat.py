@@ -378,13 +378,26 @@ class ConversationalEngine:
         ))
 
     def _wants_web(self, user_text: str, web_flag: bool = False) -> bool:
-        if web_flag:
-            return True
+        """Por defecto SIEMPRE busca en internet (corpus primero + red + aprendizaje).
+        Solo se desactiva si web_flag es explícitamente False y el usuario pide no buscar.
+        """
         t = (user_text or "").lower()
-        return bool(re.search(
-            r"\b(busca en (internet|la red|la web)|investiga|navega|aprende de internet|busca información|busca informacion|qué dice internet|que dice internet|actualidad)\b",
-            t,
-        ))
+        # opt-out explícito
+        if re.search(r"\b(sin internet|no busques|no buscar|solo corpus|solo local|offline)\b", t):
+            return False
+        if web_flag is False and web_flag is not True:
+            # si el flag llega como None/omitido, activar; solo False explícito + frase opt-out corta
+            pass
+        # flag True o ausente → sí
+        if web_flag is True or web_flag is None:
+            return True
+        # web_flag False sin opt-out en texto: aún así buscamos (política del producto)
+        # excepto saludos muy cortos sin contenido
+        if len((user_text or "").strip()) < 8 and re.match(
+            r"^(hola|hi|hey|buenas|buenos d[ií]as|ok|vale|gracias)[!.]?$", t.strip()
+        ):
+            return False
+        return True
 
     def _web_research_pack(self, user_text: str) -> tuple[str, dict]:
         """Investiga en la web y devuelve bloque de contexto + meta."""
@@ -484,10 +497,20 @@ class ConversationalEngine:
         else:
             answer = self._local_reply(user_text, history, context)
             if want_web and web_meta and web_meta.get("ok"):
-                answer = (
-                    answer
-                    + "\n\n---\nHe consultado la red sobre este tema y he incorporado fragmentos al Codex."
-                )
+                # Incorporar hallazgos de red de forma explícita en la respuesta
+                extra_web = ""
+                try:
+                    # el bloque web ya está en context; añadir nota de aprendizaje
+                    n = web_meta.get("results") or 0
+                    extra_web = (
+                        f"\n\n---\nConsulta a internet: he revisado ~{n} fuentes "
+                        "y he guardado lo relevante en el Codex para crecer el corpus."
+                    )
+                except Exception:
+                    extra_web = "\n\n---\nHe consultado internet y actualizado el Codex."
+                answer = answer + extra_web
+            elif want_web and web_meta and not web_meta.get("ok"):
+                answer = answer + "\n\n(Nota: la búsqueda web no devolvió resultados útiles en este intento.)"
             if want_long and len(answer) < 400:
                 # Ampliar localmente con doctrina + codex
                 try:

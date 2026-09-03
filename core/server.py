@@ -889,7 +889,7 @@ def api_chat():
     sid = data.get("session_id") or "default"
     device = request.headers.get("X-Device-Id")
     long_mode = bool(data.get("long") or data.get("version_larga") or data.get("larga"))
-    web_mode = bool(data.get("web") or data.get("internet") or data.get("navegar"))
+    web_mode = True if data.get("web") is None and data.get("internet") is None else bool(data.get("web") or data.get("internet") or data.get("navegar"))
     result = get_chat().reply(
         sid, text, device_id=device, long=long_mode, web=web_mode,
     )
@@ -1052,7 +1052,8 @@ def cronos_v1_chat():
     sid = data.get("session_id") or "default"
     device = request.headers.get("X-Device-Id")
     long_mode = bool(data.get("long") or data.get("version_larga"))
-    web_mode = bool(data.get("web") or data.get("internet"))
+    web_raw = data.get("web", data.get("internet", True))
+    web_mode = False if web_raw in (False, "false", "0", 0) else True)
     result = get_chat().reply(
         sid, text, device_id=device, long=long_mode, web=web_mode,
     )

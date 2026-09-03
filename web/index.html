@@ -76,7 +76,7 @@
 
           <div class="chat-options">
             <label class="chat-opt"><input type="checkbox" id="chat-opt-long" /> Versión larga</label>
-            <label class="chat-opt"><input type="checkbox" id="chat-opt-web" /> Buscar en internet</label>
+            <label class="chat-opt"><input type="checkbox" id="chat-opt-web" checked /> Buscar en internet (siempre activo)</label>
             <span id="chat-fractal-badge" class="chat-badge fractal" title="Logaritmo de re-cifrado del Codex">G0</span>
           </div>
 
@@ -519,7 +519,7 @@
             message: text,
             session_id: sid(),
             long: !!(longEl && longEl.checked),
-            web: !!(webEl && webEl.checked),
+            web: true,
           }),
         });
         var data = await res.json().catch(function () { return {}; });
