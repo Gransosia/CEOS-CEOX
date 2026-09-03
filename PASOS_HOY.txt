@@ -1,0 +1,6 @@
+CEOS-CEOX HOY
+
+1. GitHub: repo limpio. Sube el CONTENIDO de este zip (Dockerfile, core/, web/, wsgi.py en la RAIZ).
+2. Render Docker: Language=Docker, Root Directory VACIO, Free, Deploy.
+3. Si falla, Render Python: Build=pip install -r requirements.txt | Start=gunicorn --bind 0.0.0.0:$PORT wsgi:app
+4. Local: INICIAR_CEOS.bat -> http://127.0.0.1:5000

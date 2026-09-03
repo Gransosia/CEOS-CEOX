@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0f19" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>CEOS — CRONOS-Espiral</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <div class="brand">
+        <span class="logo">CEOS</span>
+        <span class="version">v5</span>
+      </div>
+      <div class="status"><span id="greeting"></span> · <span id="status">conectando…</span></div>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-view="chat">Chat</button>
+      <button class="tab" data-view="home">Inicio</button>
+      <button class="tab" data-view="maestro">Maestro</button>
+      <button class="tab" data-view="case">Caso</button>
+      <button class="tab" data-view="learn">Aprendizaje</button>
+      <button class="tab" data-view="coaching">Coaching</button>
+      <button class="tab" data-view="lang">Idiomas</button>
+      <button class="tab" data-view="research">Investigar</button>
+      <button class="tab" data-view="grammar">Infinitud</button>
+      <button class="tab" data-view="sync">Sync</button>
+      <div class="voice-nav-bar">
+        <button type="button" id="voice-nav-btn" class="voice-nav-btn" title="Cambiar de modalidad por voz">🎤 Voz</button>
+        <label class="voice-select-label">Voz
+          <select id="voice-select" title="Elige voz del navegador (prioridad femenina)"></select>
+        </label>
+        <button type="button" id="voice-test-btn" class="voice-nav-btn" title="Probar voz">Probar</button>
+        <span id="voice-nav-status" class="voice-nav-status"></span>
+      </div>
+    </nav>
+
+    <main>
+      <!-- HOME -->
+
+      <section id="view-chat" class="view active">
+        <div class="chat-shell">
+          <div class="chat-toolbar">
+            <div class="chat-toolbar-left">
+              <span id="chat-engine-badge" class="chat-badge">—</span>
+              <span id="chat-session-label" class="muted small">sesión</span>
+              <span id="chat-memory-badge" class="chat-badge memory" title="Memoria a largo plazo">mem —</span>
+            </div>
+            <div class="chat-toolbar-right">
+              <button type="button" id="btn-chat-voice-toggle" class="ghost" title="Leer respuestas en voz alta">🔊</button>
+              <button type="button" id="btn-chat-new" class="ghost" title="Nueva conversación">Nueva</button>
+              <button type="button" id="btn-chat-clear" class="ghost" title="Limpiar esta conversación">Limpiar</button>
+            </div>
+          </div>
+
+          <div id="chat-messages" class="chat-messages" aria-live="polite">
+            <div class="chat-bubble assistant">
+              <div class="bubble-meta">CEOS</div>
+              <div class="bubble-body">Hola. Estoy en modo conversación. Puedes hablarme con naturalidad: preguntar por el protocolo, analizar un sistema, pedir una lección o pensar en voz alta.</div>
+            </div>
+          </div>
+
+          <div id="chat-suggestions" class="chat-suggestions">
+            <button type="button" class="chip" data-prompt="¿Quién eres y qué puedes hacer?">¿Quién eres?</button>
+            <button type="button" class="chip" data-prompt="Explícame los cuatro regímenes de forma sencilla">Cuatro regímenes</button>
+            <button type="button" class="chip" data-prompt="Analiza este sistema: un equipo de trabajo que acumula tareas sin cerrar ciclos">Analizar un sistema</button>
+            <button type="button" class="chip" data-prompt="Dame una lección corta sobre la membrana identitaria">Lección corta</button>
+            <button type="button" class="chip" data-prompt="Busca en internet sobre la espiral adaptativa y resúmelo en clave CRONOS">Buscar en internet</button>
+            <button type="button" class="chip" data-prompt="Versión larga: desarrolla en profundidad los cuatro regímenes con ejemplos">Versión larga</button>
+          </div>
+
+          <div class="chat-options">
+            <label class="chat-opt"><input type="checkbox" id="chat-opt-long" /> Versión larga</label>
+            <label class="chat-opt"><input type="checkbox" id="chat-opt-web" /> Buscar en internet</label>
+            <span id="chat-fractal-badge" class="chat-badge fractal" title="Logaritmo de re-cifrado del Codex">G0</span>
+          </div>
+
+          <div class="chat-composer-wrap">
+            <label class="chat-composer-label" for="chat-input">Escribe tu mensaje aquí</label>
+            <form id="chat-form" class="chat-composer">
+              <button type="button" id="btn-chat-mic" class="ghost chat-mic" title="Dictar">🎤</button>
+              <textarea id="chat-input" rows="2" placeholder="Escribe aquí… Enter envía · Shift+Enter nueva línea" autocomplete="off" enterkeyhint="send"></textarea>
+              <button type="submit" id="btn-chat-send" class="primary chat-send" title="Enviar">Enviar</button>
+            </form>
+            <div id="chat-status" class="chat-status muted small"></div>
+          </div>
+        </div>
+      </section>
+
+      
+      
+      <section id="view-coaching" class="view">
+        <div class="card">
+          <h2>Curso: Coaching · Formación y Calidad (Contact Center)</h2>
+          <p class="muted">
+            Progresivo e indefinido. Alineado con el perfil Técnico/a de Formación y Calidad
+            (auditoría, feedback, role play, KPIs, onboarding, admisiones internacionales).
+          </p>
+          <div id="coach-progress" class="coach-progress"></div>
+          <div class="coach-layout">
+            <div id="coach-modules" class="coach-modules"></div>
+            <div id="coach-detail" class="coach-detail">
+              <p class="muted">Selecciona un módulo para estudiar y practicar.</p>
+            </div>
+          </div>
+          <div class="coach-tools">
+            <h3>Herramientas rápidas</h3>
+            <div id="coach-tools-box" class="lang-roles"></div>
+          </div>
+          <div class="audit-box">
+            <h3>Simulador de auditoría de llamada</h3>
+            <p class="muted">Pega una transcripción (asesor + cliente). CEOS puntúa dimensiones y genera feedback E-C-A-M.</p>
+            <textarea id="audit-transcript" rows="8" placeholder="Ejemplo:&#10;Asesor: Buenos días, le llama Marta de Admisiones Internacionales…&#10;Cliente: Es muy caro comparado con otra universidad…&#10;Asesor: Podemos ver un descuento…"></textarea>
+            <p style="margin-top:10px">
+              <button type="button" class="primary" id="btn-audit-run">Auditar llamada</button>
+            </p>
+            <div id="audit-result" class="audit-result"></div>
+          </div>
+        </div>
+      </section>
+<section id="view-lang" class="view">
+        <div class="card lang-card">
+          <h2>Práctica de idiomas (CEOX)</h2>
+          <p class="muted">Conversación real con roles. Usa la misma memoria y códice fractal que CEOS.</p>
+          <div class="lang-controls">
+            <label>Idioma objetivo
+              <select id="lang-target">
+                <option value="en">English</option>
+                <option value="es">Español</option>
+                <option value="fr">Français</option>
+                <option value="it">Italiano</option>
+                <option value="pt">Português</option>
+              </select>
+            </label>
+            <label class="chat-opt"><input type="checkbox" id="lang-long" /> Versión un poco más larga</label>
+          </div>
+          <div id="lang-roles" class="lang-roles"></div>
+          <div id="lang-session" class="lang-session hidden">
+            <div class="lang-meta">
+              <span id="lang-role-name"></span>
+              <button type="button" class="ghost" id="lang-end">Cambiar rol</button>
+            </div>
+            <div id="lang-messages" class="lang-messages"></div>
+            <div id="lang-corrections" class="lang-corrections"></div>
+            <div id="lang-suggestions" class="chat-suggestions"></div>
+            <div class="chat-compose">
+              <button type="button" id="lang-mic" class="icon-btn" title="Dictar">🎤</button>
+              <textarea id="lang-input" rows="2" placeholder="Escribe o dicta en el idioma objetivo…"></textarea>
+              <button type="button" id="lang-send" class="primary">Enviar</button>
+            </div>
+            <div id="lang-status" class="chat-status"></div>
+          </div>
+        </div>
+      </section>
+
+<section id="view-home" class="view">
+        <div class="card">
+          <h2>Identidad del Motor</h2>
+          <div id="identity-box" class="mono">cargando…</div>
+        </div>
+        <div class="card">
+          <h2>Estado del corpus</h2>
+          <div id="corpus-stats" class="stats-grid">—</div>
+        </div>
+        <div class="card">
+          <h2>Últimos casos</h2>
+          <ul id="recent-cases" class="list"></ul>
+        </div>
+      </section>
+
+      <!-- MAESTRO CRONOS -->
+      <section id="view-maestro" class="view">
+        <div class="card">
+          <h2>Modo Maestro CRONOS</h2>
+          <p class="muted">CEOS actúa como mentor del protocolo. Puede diagnosticarte, generar lecciones, diseñar trayectorias de enseñanza e incorporar tus documentos a su biblioteca.</p>
+          <div id="mentor-stats" class="stats-grid">—</div>
+          <div class="btn-row">
+            <button id="btn-seed-knowledge">Cargar conocimiento semilla CRONOS</button>
+          </div>
+          <div id="seed-result" class="result hidden"></div>
+
+          <label style="margin-top:16px">Subir documentos (PDF, DOCX, TXT, MD)</label>
+          <input type="file" id="upload-files" multiple accept=".pdf,.docx,.txt,.md,.markdown" />
+          <button class="primary" id="btn-upload">Incorporar archivos a la biblioteca</button>
+          <div id="upload-result" class="result hidden"></div>
+        </div>
+
+        <div class="card">
+          <h2>Tu identidad (se recuerda entre sesiones)</h2>
+          <p class="muted">CEOS guarda tu nombre en este PC. No reconoce tu voz de forma biométrica; puede guardar una etiqueta de voz que declares.</p>
+          <label>Nombre</label>
+          <input type="text" id="user-name" placeholder="Ej: David" />
+          <label>Nivel</label>
+          <select id="user-nivel">
+            <option value="inicial">inicial</option>
+            <option value="intermedio">intermedio</option>
+            <option value="avanzado">avanzado</option>
+          </select>
+          <label>Etiqueta de voz (opcional)</label>
+          <input type="text" id="user-voice" placeholder="Ej: tono calmado / David" />
+          <button class="primary" id="btn-save-user">Guardar identidad</button>
+          <div id="user-result" class="result hidden"></div>
+        </div>
+
+        <div class="card">
+          <h2>Diagnóstico del aprendiz</h2>
+          <label>¿Quién eres como aprendiz? (perfil)</label>
+          <textarea id="mentor-perfil" rows="2" placeholder="Ej: Investigador que conoce la síntesis pero aún no aplica el protocolo a sistemas reales"></textarea>
+          <label>Nivel declarado</label>
+          <select id="mentor-nivel">
+            <option value="inicial">inicial</option>
+            <option value="intermedio">intermedio</option>
+            <option value="avanzado">avanzado</option>
+          </select>
+          <button class="primary" id="btn-diagnose">Diagnosticar</button>
+          <div id="diagnose-result" class="result hidden"></div>
+        </div>
+
+        <div class="card">
+          <h2>Generar lección</h2>
+          <label>Tema</label>
+          <input type="text" id="lesson-topic" placeholder="Ej: Los cuatro regímenes · El Vórtice · Membrana identitaria" />
+          <label>Estilo</label>
+          <select id="lesson-estilo">
+            <option value="concepto">Concepto</option>
+            <option value="fase_espiral">Fase de la Espiral</option>
+            <option value="aplicacion">Aplicación práctica</option>
+          </select>
+          <div class="btn-row">
+            <button class="primary" id="btn-lesson">Generar lección</button>
+            <button id="btn-lesson-speak">Leer en voz alta</button>
+          </div>
+          <div id="lesson-result" class="result hidden"></div>
+        </div>
+
+        <div class="card">
+          <h2>Trayectoria de enseñanza</h2>
+          <label>Objetivo de aprendizaje</label>
+          <input type="text" id="path-objetivo" placeholder="Ej: Dominar el diagnóstico CRONOS y poder enseñarlo" />
+          <button class="primary" id="btn-path">Crear trayectoria de enseñanza</button>
+          <div id="path-result" class="result hidden"></div>
+        </div>
+
+        <div class="card">
+          <h2>Guía de estudio (exportable)</h2>
+          <label>Tema de la guía</label>
+          <input type="text" id="guide-topic" placeholder="Ej: Protocolo reproducible" />
+          <button class="primary" id="btn-guide">Generar guía Markdown</button>
+          <div id="guide-result" class="result hidden"></div>
+        </div>
+
+
+        
+        <div class="card">
+          <h2>API gratuita (opcional)</h2>
+          <p class="muted">Para documentos profundos de más calidad. Recomendado: <strong>Groq</strong> (gratis). También Gemini. Las claves se guardan solo en este PC (<code>data/llm_keys.json</code>).</p>
+          <label>GROQ_API_KEY (gratis — console.groq.com)</label>
+          <input type="password" id="key-groq" placeholder="gsk_..." />
+          <label>GEMINI_API_KEY (gratis — aistudio.google.com)</label>
+          <input type="password" id="key-gemini" placeholder="AIza..." />
+          <button id="btn-save-keys">Guardar claves</button>
+          <div id="keys-result" class="result hidden"></div>
+        </div>
+
+        
+        <div class="card">
+          <h2>Refinar con N interacciones</h2>
+          <p class="muted">Cada pasada acumula memoria (hitos, cristales, fragmentos). No reentrena una red: metaboliza el pedido en estructura CRONOS. Con API gratuita (Groq) la calidad sube mucho.</p>
+          <label>Pedido</label>
+          <textarea id="refine-pedido" rows="3" placeholder="Describe qué quieres que desarrolle o integre…"></textarea>
+          <label>Número de interacciones (1-8)</label>
+          <input type="number" id="refine-n" min="1" max="8" value="3" />
+          <label class="check">
+            <input type="checkbox" id="refine-web" /> Usar búsqueda web en el primer paso
+          </label>
+          <button class="primary" id="btn-refine">Ejecutar refinamiento</button>
+          <div id="refine-result" class="result hidden"></div>
+        </div>
+
+        <div class="card">
+          <h2>Documento profundo (híbrido)</h2>
+          <p class="muted">Si hay API key (Anthropic/OpenAI), redacta con alta calidad usando el corpus local como contexto. Sin clave, usa plantillas + Codex.</p>
+          <div id="llm-status" class="muted">Comprobando LLM…</div>
+          <label>Tema</label>
+          <input type="text" id="deep-topic" placeholder="Ej: Membrana identitaria en sistemas sociales" />
+          <label>Pedido (opcional)</label>
+          <textarea id="deep-pedido" rows="2" placeholder="Ej: Documento de 1-2 páginas, con ejemplo y ejercicio"></textarea>
+          <label class="check">
+            <input type="checkbox" id="deep-web" /> Ampliar con búsqueda web
+          </label>
+          <button class="primary" id="btn-deep">Generar documento</button>
+          <div id="deep-result" class="result hidden"></div>
+        </div>
+
+        <div class="card">
+          <h2>Codex — conocimiento comprimido</h2>
+          <p class="muted">Pocos elementos (átomos + moléculas + cristales) para almacenar y reutilizar conocimiento extenso. Infinitud discreta operativa.</p>
+          <div id="codex-stats" class="stats-grid">—</div>
+          <label>Comprimir texto largo en el Codex</label>
+          <input type="text" id="codex-topic" placeholder="Tema / etiqueta" />
+          <textarea id="codex-text" rows="3" placeholder="Pega aquí un texto largo para comprimir…"></textarea>
+          <button id="btn-compress">Comprimir al Codex</button>
+          <div id="compress-result" class="result hidden"></div>
+        </div>
+
+        <div class="card">
+          <h2>Incorporar conocimiento (texto)</h2>
+          <p class="muted">Pega apuntes, resúmenes o fragmentos. Se trocean y alimentan la infinitud discreta del Maestro.</p>
+          <label>Título</label>
+          <input type="text" id="ingest-title" placeholder="Ej: Notas sobre Semilla y Posesión" />
+          <label>Texto</label>
+          <textarea id="ingest-text" rows="4" placeholder="Pega aquí el contenido…"></textarea>
+          <button class="primary" id="btn-ingest">Incorporar a la biblioteca</button>
+          <div id="ingest-result" class="result hidden"></div>
+        </div>
+
+        <div class="card">
+          <h2>Biblioteca del Maestro</h2>
+          <ul id="library-list" class="list"></ul>
+        </div>
+      </section>
+
+      <!-- CASO -->
+      <section id="view-case" class="view">
+        <div class="card">
+          <h2>Analizar sistema</h2>
+          <label>Descripción / Identidad del sistema</label>
+          <textarea id="case-identidad" rows="3" placeholder="Describe el sistema que quieres analizar…"></textarea>
+
+          <div class="row-2">
+            <div>
+              <label>Modo</label>
+              <select id="case-modo">
+                <option value="habitual">habitual</option>
+                <option value="oculto">oculto</option>
+                <option value="prohibido">prohibido</option>
+              </select>
+            </div>
+            <div>
+              <label>Regla</label>
+              <select id="case-regla">
+                <option value="dependiente">dependiente</option>
+                <option value="estructurante">estructurante</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row-2">
+            <div>
+              <label>κ (control)</label>
+              <select id="case-kappa">
+                <option value="bajo">bajo</option>
+                <option value="medio" selected>medio</option>
+                <option value="alto">alto</option>
+              </select>
+            </div>
+            <div>
+              <label>σ (ruido / novedad)</label>
+              <select id="case-sigma">
+                <option value="bajo">bajo</option>
+                <option value="medio" selected>medio</option>
+                <option value="alto">alto</option>
+              </select>
+            </div>
+          </div>
+
+          <label>Rol declarado (opcional)</label>
+          <select id="case-rol">
+            <option value="">— ninguno —</option>
+          </select>
+
+          <label class="check">
+            <input type="checkbox" id="case-choque" /> Choque externo real
+          </label>
+
+          <button class="primary" id="btn-analyze">Analizar y guardar</button>
+          <div id="case-result" class="result hidden"></div>
+        </div>
+      </section>
+
+      <!-- APRENDIZAJE -->
+      <section id="view-learn" class="view">
+        <div class="card">
+          <h2>Diseñar trayectoria de aprendizaje</h2>
+          <label>¿Quién / qué está aprendiendo?</label>
+          <textarea id="learn-desc" rows="2" placeholder="Describe al aprendiz o el sistema de aprendizaje…"></textarea>
+          <label>Objetivo</label>
+          <input type="text" id="learn-objetivo" placeholder="Ej: Dominar el protocolo CRONOS en sistemas sociales" />
+          <button class="primary" id="btn-design">Diseñar trayectoria</button>
+          <div id="traj-result" class="result hidden"></div>
+        </div>
+        <div class="card">
+          <h2>Trayectorias activas</h2>
+          <ul id="traj-list" class="list"></ul>
+        </div>
+      </section>
+
+      <!-- INVESTIGAR / APRENDER TEMAS -->
+      <section id="view-research" class="view">
+        <div class="card">
+          <h2>Investigar y aprender un tema</h2>
+          <p class="muted">Busca en internet, resume y convierte lo relevante en fragmentos de aprendizaje (infinitud discreta). Límite honesto: no ve ni escucha vídeos de YouTube; solo usa texto publicado (transcripciones, reseñas, resúmenes).</p>
+          <label>Tema o URL</label>
+          <textarea id="research-topic" rows="2" placeholder="Ej: espiral dialéctica · https://youtube.com/watch?v=... · sistemas adaptativos"></textarea>
+          <label>Enfoque (opcional)</label>
+          <input type="text" id="research-focus" placeholder="Ej: aplicaciones prácticas, historia, críticas..." />
+          <label class="check">
+            <input type="checkbox" id="research-learn" checked /> Incorporar fragmentos al conocimiento del Motor
+          </label>
+          <button class="primary" id="btn-research">Investigar</button>
+          <div id="research-result" class="result hidden"></div>
+        </div>
+        <div class="card">
+          <h2>Voz (femenina preferida)</h2>
+          <div id="voice-status" class="muted">Comprobando motor de voz…</div>
+          <label>Texto para leer</label>
+          <textarea id="voice-text" rows="2" placeholder="Escribe algo para que CEOS lo lea en voz alta…"></textarea>
+          <button id="btn-speak">Hablar</button>
+          <div id="voice-result" class="result hidden"></div>
+        </div>
+        <div class="card">
+          <h2>Temas investigados recientemente</h2>
+          <ul id="research-history" class="list"></ul>
+        </div>
+      </section>
+
+      <!-- INFINITUD DISCRETA -->
+      <section id="view-grammar" class="view">
+        <div class="card">
+          <h2>Infinitud discreta</h2>
+          <p class="muted">Reglas finitas + fragmentos aprendidos → variedad ilimitada. Sin GPU, sin reentrenamiento.</p>
+          <div id="grammar-stats" class="stats-grid">—</div>
+          <div class="btn-row">
+            <button id="btn-gen-case">Generar caso hipotético</button>
+            <button id="btn-gen-q">Generar pregunta</button>
+            <button id="btn-gen-traj">Generar paso de trayectoria</button>
+          </div>
+          <div id="gen-output" class="result hidden"></div>
+        </div>
+      </section>
+
+      <!-- SYNC -->
+      <section id="view-sync" class="view">
+        <div class="card">
+          <h2>Sincronización multi-dispositivo</h2>
+          <p class="muted">Exporta el conocimiento de este dispositivo o importa el de otro. Cuando varios dispositivos sincronizan, el corpus crece de forma colectiva.</p>
+          <div id="sync-status" class="stats-grid">—</div>
+          <div class="btn-row">
+            <button id="btn-export">Exportar corpus</button>
+            <button id="btn-import">Importar corpus</button>
+          </div>
+          <textarea id="sync-payload" rows="6" placeholder="Aquí aparece el JSON exportado o pega aquí un export de otro dispositivo…"></textarea>
+          <div id="sync-result" class="result hidden"></div>
+        </div>
+        <div class="card">
+          <h2>Acceso desde otros dispositivos</h2>
+          <p>Mientras este servidor esté activo en el PC, abre en el navegador de tu móvil:</p>
+          <p class="mono" id="lan-url">—</p>
+          <p class="muted">Misma red Wi-Fi. Funciona en Android e iOS.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
