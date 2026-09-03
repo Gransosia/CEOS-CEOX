@@ -378,26 +378,19 @@ class ConversationalEngine:
         ))
 
     def _wants_web(self, user_text: str, web_flag: bool = False) -> bool:
-        """Por defecto SIEMPRE busca en internet (corpus primero + red + aprendizaje).
-        Solo se desactiva si web_flag es explícitamente False y el usuario pide no buscar.
-        """
-        t = (user_text or "").lower()
-        # opt-out explícito
-        if re.search(r"\b(sin internet|no busques|no buscar|solo corpus|solo local|offline)\b", t):
+        """Siempre busca en internet salvo opt-out o saludo corto."""
+        text = (user_text or "").strip()
+        low = text.lower()
+        if any(x in low for x in ("sin internet", "no busques", "no buscar", "solo corpus", "solo local", "offline")):
             return False
-        if web_flag is False and web_flag is not True:
-            # si el flag llega como None/omitido, activar; solo False explícito + frase opt-out corta
-            pass
-        # flag True o ausente → sí
-        if web_flag is True or web_flag is None:
-            return True
-        # web_flag False sin opt-out en texto: aún así buscamos (política del producto)
-        # excepto saludos muy cortos sin contenido
-        if len((user_text or "").strip()) < 8 and re.match(
-            r"^(hola|hi|hey|buenas|buenos d[ií]as|ok|vale|gracias)[!.]?$", t.strip()
+        if web_flag is False:
+            return False
+        if len(text) < 10 and re.match(
+            r"^(hola|hi|hey|buenas|buenos d[ií]as|ok|vale|gracias)[!?.]*$", low
         ):
             return False
         return True
+
 
     def _web_research_pack(self, user_text: str) -> tuple[str, dict]:
         """Investiga en la web y devuelve bloque de contexto + meta."""
