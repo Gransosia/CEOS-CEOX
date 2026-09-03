@@ -81,11 +81,13 @@
           </div>
 
           <div class="chat-composer-wrap">
-            <label class="chat-composer-label" for="chat-input">Escribe tu mensaje aquí</label>
             <form id="chat-form" class="chat-composer">
-              <button type="button" id="btn-chat-mic" class="ghost chat-mic" title="Dictar">🎤</button>
-              <textarea id="chat-input" rows="2" placeholder="Escribe aquí… Enter envía · Shift+Enter nueva línea" autocomplete="off" enterkeyhint="send"></textarea>
-              <button type="submit" id="btn-chat-send" class="primary chat-send" title="Enviar">Enviar</button>
+              <label class="chat-composer-label" for="chat-input">Escribe tu mensaje aquí</label>
+              <textarea id="chat-input" name="message" rows="3" placeholder="Escribe aquí tu mensaje…" autocomplete="off" enterkeyhint="send"></textarea>
+              <div class="chat-composer-actions">
+                <button type="button" id="btn-chat-mic" class="ghost chat-mic" title="Dictar">🎤 Dictar</button>
+                <button type="submit" id="btn-chat-send" class="primary chat-send">Enviar</button>
+              </div>
             </form>
             <div id="chat-status" class="chat-status muted small"></div>
           </div>
