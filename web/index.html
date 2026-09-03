@@ -81,12 +81,12 @@
           </div>
 
           <div class="chat-composer-wrap">
-            <form id="chat-form" class="chat-composer">
+            <form id="chat-form" class="chat-composer" method="post" action="#" onsubmit="return false;">
               <label class="chat-composer-label" for="chat-input">Escribe tu mensaje aquí</label>
-              <textarea id="chat-input" name="message" rows="3" placeholder="Escribe aquí tu mensaje…" autocomplete="off" enterkeyhint="send"></textarea>
+              <textarea id="chat-input" rows="3" placeholder="Escribe aquí tu mensaje…" autocomplete="off" enterkeyhint="send"></textarea>
               <div class="chat-composer-actions">
                 <button type="button" id="btn-chat-mic" class="ghost chat-mic" title="Dictar">🎤 Dictar</button>
-                <button type="submit" id="btn-chat-send" class="primary chat-send">Enviar</button>
+                <button type="button" id="btn-chat-send" class="primary chat-send">Enviar</button>
               </div>
             </form>
             <div id="chat-status" class="chat-status muted small"></div>
@@ -468,6 +468,130 @@
       </section>
     </main>
   </div>
+
+  
+  <script>
+  /* Chat operativo embebido — no depende de caché de app.js */
+  (function () {
+    function sid() {
+      var k = "ceos_chat_sid";
+      var v = localStorage.getItem(k);
+      if (!v) {
+        v = "s-" + Math.random().toString(36).slice(2, 10);
+        localStorage.setItem(k, v);
+      }
+      return v;
+    }
+    function bubble(role, text) {
+      var box = document.getElementById("chat-messages");
+      if (!box) return;
+      var div = document.createElement("div");
+      div.className = "chat-bubble " + (role === "user" ? "user" : "assistant");
+      div.innerHTML =
+        '<div class="bubble-meta">' +
+        (role === "user" ? "Tú" : "CEOS") +
+        "</div><div class=\"bubble-body\"></div>";
+      div.querySelector(".bubble-body").textContent = text;
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    }
+    function status(msg) {
+      var el = document.getElementById("chat-status");
+      if (el) el.textContent = msg || "";
+      var st = document.getElementById("status");
+      if (st && msg) st.textContent = msg;
+    }
+    window.__ceosSendChat = async function () {
+      var input = document.getElementById("chat-input");
+      if (!input) return;
+      var text = (input.value || "").trim();
+      if (!text) return;
+      input.value = "";
+      bubble("user", text);
+      status("Pensando…");
+      try {
+        var longEl = document.getElementById("chat-opt-long");
+        var webEl = document.getElementById("chat-opt-web");
+        var res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: text,
+            session_id: sid(),
+            long: !!(longEl && longEl.checked),
+            web: !!(webEl && webEl.checked),
+          }),
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok) {
+          bubble("assistant", "Error: " + (data.error || res.status));
+          status("Error");
+          return;
+        }
+        bubble("assistant", data.reply || "(sin texto)");
+        status(data.engine || data.mode || "ok");
+        var head = document.getElementById("status");
+        if (head) head.textContent = "en línea";
+      } catch (e) {
+        bubble("assistant", "No hay conexión con el servidor: " + e.message);
+        status("Sin conexión API");
+      }
+    };
+    function bind() {
+      var btn = document.getElementById("btn-chat-send");
+      var form = document.getElementById("chat-form");
+      var input = document.getElementById("chat-input");
+      if (btn) {
+        btn.type = "button";
+        btn.onclick = function (e) {
+          e.preventDefault();
+          window.__ceosSendChat();
+          return false;
+        };
+      }
+      if (form) {
+        form.onsubmit = function (e) {
+          e.preventDefault();
+          window.__ceosSendChat();
+          return false;
+        };
+      }
+      if (input) {
+        input.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            window.__ceosSendChat();
+          }
+        });
+      }
+      // chips
+      document.querySelectorAll("#chat-suggestions .chip").forEach(function (chip) {
+        chip.addEventListener("click", function () {
+          var p = chip.getAttribute("data-prompt") || chip.textContent;
+          var input = document.getElementById("chat-input");
+          if (input) input.value = p;
+          window.__ceosSendChat();
+        });
+      });
+      // ping
+      fetch("/health")
+        .then(function (r) { return r.json(); })
+        .then(function () {
+          var head = document.getElementById("status");
+          if (head) head.textContent = "en línea";
+        })
+        .catch(function () {
+          var head = document.getElementById("status");
+          if (head) head.textContent = "API no responde";
+        });
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", bind);
+    } else {
+      bind();
+    }
+  })();
+  </script>
 
   <script src="app.js"></script>
 </body>

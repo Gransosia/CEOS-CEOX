@@ -513,18 +513,31 @@ async function refreshMemoryBadge() {
 function bindChatUI() {
   const form = document.getElementById("chat-form");
   const input = document.getElementById("chat-input");
-  if (form) {
-    form.addEventListener("submit", (e) => {
+  const sendBtn = document.getElementById("btn-chat-send");
+  function doSend(e) {
+    if (e) {
       e.preventDefault();
-      sendChatMessage(input && input.value);
-    });
+      e.stopPropagation();
+    }
+    const text = input ? input.value : "";
+    sendChatMessage(text);
+    return false;
+  }
+  if (form) {
+    form.setAttribute("method", "post");
+    form.setAttribute("action", "#");
+    form.addEventListener("submit", doSend);
+  }
+  if (sendBtn) {
+    sendBtn.type = "button";
+    sendBtn.addEventListener("click", doSend);
   }
   if (input) {
     input.addEventListener("input", autoSizeChatInput);
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
-        sendChatMessage(input.value);
+        doSend(e);
       }
     });
   }
