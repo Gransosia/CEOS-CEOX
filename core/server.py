@@ -32,7 +32,7 @@ WEB_DIR = BASE_DIR / "web"
 DATA_DIR = BASE_DIR / "data"
 KNOWLEDGE_DIR = BASE_DIR / "knowledge"
 
-app = Flask(__name__, static_folder=str(WEB_DIR), static_url_path="")
+app = Flask(__name__, static_folder=None)
 
 
 def _ensure_data_dirs():
@@ -152,14 +152,35 @@ def get_lan_ip():
 
 # ---------- Páginas ----------
 @app.route("/health")
+@app.route("/healthz")
 def health():
     """Healthcheck simple para Render / Railway / balanceadores."""
-    return jsonify({"ok": True, "service": "ceos-v5", "version": "5.4.1-cloud"})
+    return jsonify({"ok": True, "service": "ceos-v5", "version": "5.4.1-cloud", "web": (WEB_DIR / "index.html").exists()})
 
 
 @app.route("/")
 def index():
-    return send_from_directory(WEB_DIR, "index.html")
+    index_path = WEB_DIR / "index.html"
+    if index_path.is_file():
+        return send_from_directory(str(WEB_DIR), "index.html")
+    return (
+        "<h1>CEOS</h1><p>Falta web/index.html en el despliegue. "
+        "Sube la carpeta web/ a GitHub y redespliega.</p>",
+        200,
+        {"Content-Type": "text/html; charset=utf-8"},
+    )
+
+
+@app.route("/app.js")
+def serve_app_js():
+    return send_from_directory(str(WEB_DIR), "app.js")
+
+
+@app.route("/styles.css")
+def serve_styles():
+    return send_from_directory(str(WEB_DIR), "styles.css")
+
+
 
 
 # ---------- API Identidad ----------
