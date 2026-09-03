@@ -11,6 +11,7 @@ Diseño:
 from __future__ import annotations
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -470,9 +471,15 @@ class ConversationalEngine:
 
         context = self._build_context_pack(user_text)
         if want_web:
-            web_block, web_meta = self._web_research_pack(user_text)
+            web_block, web_meta = "", {"ok": False, "topic": user_text[:80], "results": 0}
+            try:
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    fut = pool.submit(self._web_research_pack, user_text)
+                    web_block, web_meta = fut.result(timeout=12)
+            except Exception as e:
+                web_block = f"BÚSQUEDA WEB: (tiempo agotado o error: {type(e).__name__})"
+                web_meta = {"ok": False, "topic": user_text[:80], "results": 0, "error": str(e)[:120]}
             context = context + "\n\n" + web_block
-            # Incorporar hallazgos al codex (aprendizaje)
             try:
                 if web_meta and web_meta.get("ok"):
                     self.codex.compress_text(web_block[:4000], topic=(web_meta.get("topic") or user_text)[:60])

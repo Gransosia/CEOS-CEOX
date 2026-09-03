@@ -512,17 +512,25 @@
       try {
         var longEl = document.getElementById("chat-opt-long");
         var webEl = document.getElementById("chat-opt-web");
-        var res = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: text,
-            session_id: sid(),
-            long: !!(longEl && longEl.checked),
-            web: true,
-          }),
-        });
-        var data = await res.json().catch(function () { return {}; });
+        var ctrl = new AbortController();
+        var timer = setTimeout(function () { ctrl.abort(); }, 45000);
+        var res, data = {};
+        try {
+          res = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message: text,
+              session_id: sid(),
+              long: !!(longEl && longEl.checked),
+              web: true,
+            }),
+            signal: ctrl.signal,
+          });
+          data = await res.json().catch(function () { return {}; });
+        } finally {
+          clearTimeout(timer);
+        }
         if (!res.ok) {
           bubble("assistant", "Error: " + (data.error || res.status));
           status("Error");

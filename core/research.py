@@ -24,7 +24,7 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
-def _fetch_text(url: str, timeout: int = 12) -> Optional[str]:
+def _fetch_text(url: str, timeout: int = 6) -> Optional[str]:
     try:
         req = Request(url, headers={"User-Agent": USER_AGENT})
         with urlopen(req, timeout=timeout) as resp:
@@ -48,7 +48,7 @@ def _strip_html(html: str) -> str:
     return text.strip()
 
 
-def search_duckduckgo(query: str, max_results: int = 5) -> list[dict]:
+def search_duckduckgo(query: str, max_results: int = 3) -> list[dict]:
     """
     Búsqueda ligera vía DuckDuckGo HTML (sin API key).
     Devuelve lista de {title, url, snippet}.
@@ -109,7 +109,7 @@ def research_topic(topic: str, focus: str = None) -> dict:
     all_results = []
     seen_urls = set()
     for q in queries:
-        for r in search_duckduckgo(q, max_results=4):
+        for r in search_duckduckgo(q, max_results=3):
             if r["url"] not in seen_urls:
                 seen_urls.add(r["url"])
                 all_results.append(r)
