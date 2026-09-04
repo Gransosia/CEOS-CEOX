@@ -1199,7 +1199,7 @@ async function refreshResearch() {
   }
 }
 
-document.getElementById("btn-research").addEventListener("click", async () => {
+document.getElementById("btn-research")?.addEventListener("click", async () => {
   const topic = document.getElementById("research-topic").value.trim();
   const focus = document.getElementById("research-focus").value.trim() || null;
   const learn = document.getElementById("research-learn").checked;
@@ -1250,7 +1250,7 @@ document.getElementById("btn-research").addEventListener("click", async () => {
   }
 });
 
-document.getElementById("btn-speak").addEventListener("click", async () => {
+document.getElementById("btn-speak")?.addEventListener("click", async () => {
   const text = document.getElementById("voice-text").value.trim();
   const box = document.getElementById("voice-result");
   if (!text) {

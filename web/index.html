@@ -415,7 +415,7 @@
           <label class="check">
             <input type="checkbox" id="research-learn" checked /> Incorporar fragmentos al conocimiento del Motor
           </label>
-          <button class="primary" id="btn-research">Investigar</button>
+          <button type="button" class="primary" id="btn-research">Investigar</button>
           <div id="research-result" class="result hidden"></div>
         </div>
         <div class="card">
@@ -753,6 +753,115 @@
     } else {
       boot();
     }
+  })();
+  </script>
+
+  
+  <script>
+  /* Investigar: botón siempre enlazado a /api/research */
+  (function () {
+    function deviceId() {
+      var k = "ceos_device_id";
+      var v = localStorage.getItem(k);
+      if (!v) {
+        v = "dev-" + Math.random().toString(36).slice(2, 10);
+        localStorage.setItem(k, v);
+      }
+      return v;
+    }
+    async function runResearch() {
+      var topicEl = document.getElementById("research-topic");
+      var focusEl = document.getElementById("research-focus");
+      var learnEl = document.getElementById("research-learn");
+      var box = document.getElementById("research-result");
+      var topic = topicEl ? topicEl.value.trim() : "";
+      var focus = focusEl && focusEl.value.trim() ? focusEl.value.trim() : null;
+      var learn = learnEl ? !!learnEl.checked : true;
+      if (!topic) {
+        alert("Escribe un tema o URL.");
+        return;
+      }
+      if (box) {
+        box.classList.remove("hidden");
+        box.className = "result";
+        box.style.display = "block";
+        box.textContent = "Investigando… puede tardar unos segundos.";
+      }
+      try {
+        var ctrl = new AbortController();
+        var timer = setTimeout(function () { ctrl.abort(); }, 60000);
+        var res = await fetch("/api/research", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Device-Id": deviceId(),
+          },
+          body: JSON.stringify({ topic: topic, focus: focus, learn: learn }),
+          signal: ctrl.signal,
+        });
+        clearTimeout(timer);
+        var report = await res.json().catch(function () { return {}; });
+        if (!res.ok || report.ok === false) {
+          if (box) {
+            box.className = "result warn";
+            box.textContent = report.error || ("Error HTTP " + res.status);
+          }
+          return;
+        }
+        var msg = "";
+        if (report.youtube_limit_applied) {
+          msg += "⚠ Límite YouTube: solo texto publicado.\n\n";
+        }
+        if (report.disclaimer) msg += report.disclaimer + "\n\n";
+        if (report.summary) msg += "Resumen:\n" + report.summary + "\n\n";
+        if (report.key_points && report.key_points.length) {
+          msg += "Puntos clave:\n";
+          report.key_points.slice(0, 8).forEach(function (pt, i) {
+            msg += (i + 1) + ". " + pt + "\n";
+          });
+          msg += "\n";
+        }
+        if (report.learned) {
+          msg += "✓ Aprendizaje: " + (report.fragments_added || 0) + " fragmentos al motor.\n";
+        }
+        var sources = report.sources || report.results || [];
+        if (sources.length) {
+          msg += "\nFuentes (" + sources.length + "):\n";
+          sources.slice(0, 6).forEach(function (s) {
+            msg += "· " + (s.title || s.url || s) + "\n";
+          });
+        } else {
+          msg += "\n(Sin fuentes externas en este intento; revisa core/research.py desplegado.)\n";
+        }
+        if (box) {
+          box.className = "result ok";
+          box.textContent = msg || "Investigación completada.";
+        }
+      } catch (e) {
+        if (box) {
+          box.className = "result warn";
+          box.textContent = "Error: " + (e.name === "AbortError" ? "tiempo agotado" : e.message);
+        }
+      }
+    }
+    function bind() {
+      var btn = document.getElementById("btn-research");
+      if (btn) {
+        btn.type = "button";
+        btn.onclick = function (e) {
+          e.preventDefault();
+          runResearch();
+          return false;
+        };
+      }
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", bind);
+    } else {
+      bind();
+    }
+    // por si el DOM tarda
+    setTimeout(bind, 500);
   })();
   </script>
 
