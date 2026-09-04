@@ -816,3 +816,35 @@ button.ghost:hover { color: var(--text); border-color: rgba(255,255,255,0.18); }
   overflow-y: auto !important;
   min-height: 100px !important;
 }
+
+/* Redimensionar paneles */
+.chat-shell {
+  resize: both !important;
+  overflow: auto !important;
+  min-width: 280px !important;
+  min-height: 320px !important;
+  max-width: 100% !important;
+}
+.card {
+  resize: vertical;
+  overflow: auto;
+  min-height: 120px;
+}
+#chat-input {
+  resize: vertical !important;
+  min-height: 72px !important;
+}
+/* Arrastre visual: esquina inferior derecha */
+.chat-shell::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 14px;
+  height: 14px;
+  border-right: 2px solid #64748b;
+  border-bottom: 2px solid #64748b;
+  pointer-events: none;
+  opacity: 0.6;
+}
+.chat-shell { position: relative; }

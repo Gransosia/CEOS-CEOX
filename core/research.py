@@ -48,38 +48,145 @@ def _strip_html(html: str) -> str:
     return text.strip()
 
 
-def search_duckduckgo(query: str, max_results: int = 3) -> list[dict]:
-    """
-    Búsqueda ligera vía DuckDuckGo HTML (sin API key).
-    Devuelve lista de {title, url, snippet}.
-    """
-    url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
-    html = _fetch_text(url)
-    if not html:
-        return []
-
-    results = []
-    # Patrón aproximado de resultados DDG HTML
-    blocks = re.findall(
-        r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>.*?class="result__snippet"[^>]*>(.*?)</',
-        html,
-        flags=re.I | re.S,
+def search_duckduckgo_api(query: str) -> list[dict]:
+    """DuckDuckGo Instant Answer API (JSON, sin clave). Más fiable desde servidores."""
+    url = (
+        "https://api.duckduckgo.com/?q="
+        + quote_plus(query)
+        + "&format=json&no_html=1&skip_disambig=1"
     )
-    for href, title, snippet in blocks[:max_results]:
-        title_clean = _strip_html(title)[:120]
-        snippet_clean = _strip_html(snippet)[:280]
-        # DuckDuckGo a veces envuelve el enlace
-        if "uddg=" in href:
-            m = re.search(r"uddg=([^&]+)", href)
-            if m:
-                from urllib.parse import unquote
-                href = unquote(m.group(1))
+    raw = _fetch_text(url, timeout=8)
+    results = []
+    if not raw:
+        return results
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return results
+    abstract = (data.get("AbstractText") or "").strip()
+    abs_url = data.get("AbstractURL") or data.get("AbstractSource") or ""
+    heading = data.get("Heading") or query
+    if abstract:
         results.append({
-            "title": title_clean,
-            "url": href,
-            "snippet": snippet_clean,
+            "title": heading,
+            "url": abs_url or "https://duckduckgo.com/?q=" + quote_plus(query),
+            "snippet": abstract[:500],
+            "source": "ddg-abstract",
         })
+    for t in (data.get("RelatedTopics") or [])[:5]:
+        if not isinstance(t, dict):
+            continue
+        if "Topics" in t:  # grupo
+            for t2 in (t.get("Topics") or [])[:3]:
+                if isinstance(t2, dict) and t2.get("Text"):
+                    results.append({
+                        "title": (t2.get("Text") or "")[:80],
+                        "url": t2.get("FirstURL") or "",
+                        "snippet": (t2.get("Text") or "")[:280],
+                        "source": "ddg-related",
+                    })
+        elif t.get("Text"):
+            results.append({
+                "title": (t.get("Text") or "")[:80],
+                "url": t.get("FirstURL") or "",
+                "snippet": (t.get("Text") or "")[:280],
+                "source": "ddg-related",
+            })
     return results
+
+
+def search_wikipedia(query: str, lang: str = "es") -> list[dict]:
+    """Wikipedia API opensearch + extract (sin clave)."""
+    results = []
+    try:
+        opensearch = (
+            f"https://{lang}.wikipedia.org/w/api.php?action=opensearch&search="
+            + quote_plus(query)
+            + "&limit=3&namespace=0&format=json"
+        )
+        raw = _fetch_text(opensearch, timeout=8)
+        if not raw:
+            # fallback inglés
+            if lang != "en":
+                return search_wikipedia(query, lang="en")
+            return results
+        data = json.loads(raw)
+        # [query, [titles], [descs], [urls]]
+        titles = data[1] if len(data) > 1 else []
+        descs = data[2] if len(data) > 2 else []
+        urls = data[3] if len(data) > 3 else []
+        for i, title in enumerate(titles[:3]):
+            results.append({
+                "title": title,
+                "url": urls[i] if i < len(urls) else "",
+                "snippet": (descs[i] if i < len(descs) else title)[:300],
+                "source": f"wikipedia-{lang}",
+            })
+        # extract del primero
+        if titles:
+            ext_url = (
+                f"https://{lang}.wikipedia.org/w/api.php?action=query&prop=extracts"
+                f"&exintro=1&explaintext=1&titles={quote_plus(titles[0])}&format=json"
+            )
+            raw2 = _fetch_text(ext_url, timeout=8)
+            if raw2:
+                d2 = json.loads(raw2)
+                pages = (d2.get("query") or {}).get("pages") or {}
+                for pg in pages.values():
+                    extract = (pg.get("extract") or "")[:600]
+                    if extract and results:
+                        results[0]["snippet"] = extract
+                        break
+        if not results and lang != "en":
+            return search_wikipedia(query, lang="en")
+    except Exception:
+        pass
+    return results
+
+
+def search_duckduckgo(query: str, max_results: int = 5) -> list[dict]:
+    """Multi-fuente: DDG API + Wikipedia (+ HTML como último recurso)."""
+    results = []
+    seen = set()
+
+    def _add(items):
+        for r in items:
+            key = (r.get("url") or "") + (r.get("title") or "")
+            if key in seen:
+                continue
+            if not (r.get("snippet") or r.get("title")):
+                continue
+            seen.add(key)
+            results.append(r)
+
+    _add(search_duckduckgo_api(query))
+    _add(search_wikipedia(query, "es"))
+    if len(results) < 2:
+        _add(search_wikipedia(query, "en"))
+
+    # HTML DDG solo si aún vacío
+    if not results:
+        url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
+        html = _fetch_text(url, timeout=8)
+        if html:
+            blocks = re.findall(
+                r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>.*?class="result__snippet"[^>]*>(.*?)</',
+                html,
+                flags=re.I | re.S,
+            )
+            from urllib.parse import unquote
+            for href, title, snippet in blocks[:max_results]:
+                if "uddg=" in href:
+                    m = re.search(r"uddg=([^&]+)", href)
+                    if m:
+                        href = unquote(m.group(1))
+                _add([{
+                    "title": _strip_html(title)[:120],
+                    "url": href,
+                    "snippet": _strip_html(snippet)[:280],
+                    "source": "ddg-html",
+                }])
+    return results[:max_results]
 
 
 def is_youtube_url(text: str) -> bool:
@@ -109,10 +216,31 @@ def research_topic(topic: str, focus: str = None) -> dict:
     all_results = []
     seen_urls = set()
     for q in queries:
-        for r in search_duckduckgo(q, max_results=3):
-            if r["url"] not in seen_urls:
-                seen_urls.add(r["url"])
+        for r in search_duckduckgo(q, max_results=5):
+            u = r.get("url") or r.get("title")
+            if u not in seen_urls:
+                seen_urls.add(u)
                 all_results.append(r)
+    # Si pocos resultados, probar variante en inglés simple
+    if len(all_results) < 5 and topic:
+        alt = topic
+        # pistas mínimas ES→EN frecuentes en consultas religiosas/científicas
+        for a, b in (
+            ("astroteología", "astrotheology"),
+            ("astroteologia", "astrotheology"),
+            ("teología", "theology"),
+            ("qué es ", "what is "),
+            ("que es ", "what is "),
+        ):
+            if a in topic.lower():
+                alt = topic.lower().replace(a, b)
+                break
+        if alt != topic:
+            for r in search_duckduckgo(alt, max_results=5):
+                u = r.get("url") or r.get("title")
+                if u not in seen_urls:
+                    seen_urls.add(u)
+                    all_results.append(r)
 
     # Construir resumen a partir de snippets (sin LLM externo obligatorio)
     snippets = [r["snippet"] for r in all_results if r.get("snippet")]
