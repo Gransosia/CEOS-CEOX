@@ -848,3 +848,15 @@ button.ghost:hover { color: var(--text); border-color: rgba(255,255,255,0.18); }
   opacity: 0.6;
 }
 .chat-shell { position: relative; }
+
+/* Tabs clicables garantizados */
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.tab { cursor: pointer; pointer-events: auto; z-index: 2; position: relative; }
+.view { display: none !important; }
+.view.active { display: block !important; }
+.help-list { margin: 12px 0; padding-left: 1.2rem; line-height: 1.55; }
+.help-list li { margin-bottom: 8px; }
+.voice-nav-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
+}

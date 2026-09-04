@@ -19,26 +19,27 @@
       <div class="status"><span id="greeting"></span> · <span id="status">conectando…</span></div>
     </header>
 
-    <nav class="tabs">
-      <button class="tab active" data-view="chat">Chat</button>
-      <button class="tab" data-view="home">Inicio</button>
-      <button class="tab" data-view="maestro">Maestro</button>
-      <button class="tab" data-view="case">Caso</button>
-      <button class="tab" data-view="learn">Aprendizaje</button>
-      <button class="tab" data-view="coaching">Coaching</button>
-      <button class="tab" data-view="lang">Idiomas</button>
-      <button class="tab" data-view="research">Investigar</button>
-      <button class="tab" data-view="grammar">Infinitud</button>
-      <button class="tab" data-view="sync">Sync</button>
-      <div class="voice-nav-bar">
-        <button type="button" id="voice-nav-btn" class="voice-nav-btn" title="Cambiar de modalidad por voz">🎤 Voz</button>
-        <label class="voice-select-label">Voz
-          <select id="voice-select" title="Elige voz del navegador (prioridad femenina)"></select>
-        </label>
-        <button type="button" id="voice-test-btn" class="voice-nav-btn" title="Probar voz">Probar</button>
-        <span id="voice-nav-status" class="voice-nav-status"></span>
-      </div>
+    <nav class="tabs" id="main-tabs" aria-label="Modalidades CEOS">
+      <button type="button" class="tab active" data-view="chat" title="Conversación libre con memoria y búsqueda web">Chat</button>
+      <button type="button" class="tab" data-view="home" title="Resumen del estado del sistema y últimos casos">Inicio</button>
+      <button type="button" class="tab" data-view="maestro" title="Mentor CRONOS: lecciones, biblioteca y códice">Maestro</button>
+      <button type="button" class="tab" data-view="case" title="Analizar un sistema con el protocolo CRONOS">Caso</button>
+      <button type="button" class="tab" data-view="learn" title="Diseñar trayectorias de aprendizaje">Aprendizaje</button>
+      <button type="button" class="tab" data-view="coaching" title="Curso Formación y Calidad + auditoría de llamadas">Coaching</button>
+      <button type="button" class="tab" data-view="lang" title="Práctica de idiomas con roles (CEOX)">Idiomas</button>
+      <button type="button" class="tab" data-view="research" title="Investigar un tema en internet y guardar en el códice">Investigar</button>
+      <button type="button" class="tab" data-view="grammar" title="Infinitud discreta: gramática y fragmentos del motor">Infinitud</button>
+      <button type="button" class="tab" data-view="sync" title="Exportar/importar corpus entre dispositivos">Sync</button>
+      <button type="button" class="tab" data-view="help" title="Guía de pestañas y comandos de voz">Ayuda</button>
     </nav>
+    <div class="voice-nav-bar">
+      <button type="button" id="voice-nav-btn" class="voice-nav-btn" title="Di: abre investigar, modo maestro…">🎤 Menú por voz</button>
+      <label class="voice-select-label">Voz TTS
+        <select id="voice-select" title="Voz del navegador (prioridad femenina)"></select>
+      </label>
+      <button type="button" id="voice-test-btn" class="voice-nav-btn" title="Probar voz">Probar</button>
+      <span id="voice-nav-status" class="voice-nav-status"></span>
+    </div>
 
     <main>
       <!-- HOME -->
@@ -466,6 +467,32 @@
           <p class="muted">Misma red Wi-Fi. Funciona en Android e iOS.</p>
         </div>
       </section>
+
+      <section id="view-help" class="view">
+        <div class="card">
+          <h2>Guía rápida de pestañas</h2>
+          <p class="muted">Pasa el cursor por cada pestaña para ver un resumen. Aquí va el detalle.</p>
+          <ul class="help-list">
+            <li><strong>Chat</strong> — Conversación principal. Memoria a largo plazo, versión larga y búsqueda en internet (por defecto).</li>
+            <li><strong>Inicio</strong> — Panel de estado: identidad del motor, estadísticas y últimos casos.</li>
+            <li><strong>Maestro</strong> — Mentor CRONOS: diagnóstico, lecciones, trayectoria, biblioteca de documentos y códice comprimido.</li>
+            <li><strong>Caso</strong> — Analizas un sistema real o hipotético con el protocolo (regímenes, membrana, vórtice…).</li>
+            <li><strong>Aprendizaje</strong> — Diseñas trayectorias de aprendizaje paso a paso.</li>
+            <li><strong>Coaching</strong> — Curso de Formación y Calidad (call center), plantillas E-C-A-M y simulador de auditoría de llamadas.</li>
+            <li><strong>Idiomas</strong> — Práctica conversacional (CEOX) con roles: restaurante, médico, etc.</li>
+            <li><strong>Investigar</strong> — Eliges un tema, CEOS busca en internet (Wikipedia/DDG), resume y guarda en el códice.</li>
+            <li><strong>Infinitud</strong> — Motor de gramática/fragmentos: genera casos, preguntas o pasos a partir de reglas + lo aprendido.</li>
+            <li><strong>Sync</strong> — Exportar o importar el corpus para usarlo en otro dispositivo.</li>
+          </ul>
+          <h3>Menú por voz</h3>
+          <p>Pulsa <strong>🎤 Menú por voz</strong> y di, por ejemplo:</p>
+          <ul class="help-list">
+            <li>«Abre chat» · «Abre investigar» · «Modo maestro»</li>
+            <li>«Idiomas» · «Coaching» · «Inicio» · «Ayuda»</li>
+          </ul>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -597,6 +624,134 @@
       document.addEventListener("DOMContentLoaded", bind);
     } else {
       bind();
+    }
+  })();
+  </script>
+
+  
+  <script>
+  /* Navegación de pestañas + menú por voz (siempre activo) */
+  (function () {
+    var LABELS = {
+      chat: "Chat", home: "Inicio", maestro: "Maestro", case: "Caso",
+      learn: "Aprendizaje", coaching: "Coaching", lang: "Idiomas",
+      research: "Investigar", grammar: "Infinitud", sync: "Sync", help: "Ayuda"
+    };
+    function showView(name) {
+      if (!name) return false;
+      var view = document.getElementById("view-" + name);
+      if (!view) return false;
+      document.querySelectorAll(".view").forEach(function (v) {
+        v.classList.remove("active");
+      });
+      document.querySelectorAll(".tab").forEach(function (b) {
+        b.classList.toggle("active", b.getAttribute("data-view") === name);
+      });
+      view.classList.add("active");
+      try { window.scrollTo(0, 0); } catch (e) {}
+      return true;
+    }
+    window.__ceosShowView = showView;
+
+    function bindTabs() {
+      document.querySelectorAll(".tab[data-view]").forEach(function (btn) {
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          showView(btn.getAttribute("data-view"));
+        });
+      });
+    }
+
+    function matchVoice(transcript) {
+      var t = (transcript || "").toLowerCase();
+      t = t.replace(/^(abre|abrir|ve a|vamos a|modo|cambiar a|cambia a|ir a|pon|activa)\s+/i, "");
+      var map = [
+        [/investig|buscar tema|research/, "research"],
+        [/coach|calidad|formaci[oó]n/, "coaching"],
+        [/idioma|ingl[eé]s|ceox/, "lang"],
+        [/maestro|mentor/, "maestro"],
+        [/aprendizaje|trayector/, "learn"],
+        [/caso|an[aá]lisis/, "case"],
+        [/infinitud|gram[aá]tica|c[oó]dice/, "grammar"],
+        [/sync|sincron/, "sync"],
+        [/ayuda|help|gu[ií]a/, "help"],
+        [/inicio|home|principal/, "home"],
+        [/chat|conversaci[oó]n/, "chat"]
+      ];
+      for (var i = 0; i < map.length; i++) {
+        if (map[i][0].test(t)) return map[i][1];
+      }
+      return null;
+    }
+
+    function bindVoiceMenu() {
+      var btn = document.getElementById("voice-nav-btn");
+      var status = document.getElementById("voice-nav-status");
+      if (!btn) return;
+      var rec = null;
+      var listening = false;
+      btn.addEventListener("click", function () {
+        var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) {
+          alert("Tu navegador no soporta reconocimiento de voz. Usa Chrome o Edge.");
+          return;
+        }
+        if (listening && rec) {
+          try { rec.stop(); } catch (e) {}
+          listening = false;
+          btn.classList.remove("listening");
+          if (status) status.textContent = "";
+          return;
+        }
+        rec = new SR();
+        rec.lang = "es-ES";
+        rec.interimResults = false;
+        rec.onstart = function () {
+          listening = true;
+          btn.classList.add("listening");
+          if (status) status.textContent = "Escuchando… di «abre investigar»";
+        };
+        rec.onerror = function () {
+          listening = false;
+          btn.classList.remove("listening");
+          if (status) status.textContent = "No te he entendido";
+        };
+        rec.onend = function () {
+          listening = false;
+          btn.classList.remove("listening");
+        };
+        rec.onresult = function (ev) {
+          var said = (ev.results[0] && ev.results[0][0] && ev.results[0][0].transcript) || "";
+          if (status) status.textContent = "«" + said + "»";
+          var view = matchVoice(said);
+          if (view && showView(view)) {
+            if (status) status.textContent = "→ " + (LABELS[view] || view);
+            try {
+              if (window.speechSynthesis) {
+                var u = new SpeechSynthesisUtterance("Abriendo " + (LABELS[view] || view));
+                u.lang = "es-ES";
+                window.speechSynthesis.speak(u);
+              }
+            } catch (e) {}
+          } else if (status) {
+            status.textContent = "No reconocí la pestaña. Prueba: investigar, maestro, chat…";
+          }
+        };
+        try { rec.start(); } catch (e) {
+          if (status) status.textContent = "No se pudo iniciar el micrófono";
+        }
+      });
+    }
+
+    function boot() {
+      bindTabs();
+      bindVoiceMenu();
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", boot);
+    } else {
+      boot();
     }
   })();
   </script>
