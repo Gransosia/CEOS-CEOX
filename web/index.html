@@ -32,13 +32,18 @@
       <button type="button" class="tab" data-view="sync" title="Exportar/importar corpus entre dispositivos">Sync</button>
       <button type="button" class="tab" data-view="help" title="Guía de pestañas y comandos de voz">Ayuda</button>
     </nav>
-    <div class="voice-nav-bar">
-      <button type="button" id="voice-nav-btn" class="voice-nav-btn" title="Di: abre investigar, modo maestro…">🎤 Menú por voz</button>
-      <label class="voice-select-label">Voz TTS
-        <select id="voice-select" title="Voz del navegador (prioridad femenina)"></select>
+    <div class="voice-nav-bar" id="voice-os-bar">
+      <button type="button" id="voice-os-btn" class="voice-nav-btn voice-os-main" title="Habla con CEOS">🎤 Hablar</button>
+      <button type="button" id="voice-stop-btn" class="voice-nav-btn voice-stop" title="Detener voz ahora">⏹ Detener voz</button>
+      <button type="button" id="voice-nav-btn" class="voice-nav-btn" title="Cambiar pestaña por voz">Menú</button>
+      <label class="voice-select-label">Voz
+        <select id="voice-select" title="Voz femenina preferida"></select>
       </label>
-      <button type="button" id="voice-test-btn" class="voice-nav-btn" title="Probar voz">Probar</button>
-      <span id="voice-nav-status" class="voice-nav-status"></span>
+      <label class="voice-opt" title="Si está desmarcado, solo texto en pantalla">
+        <input type="checkbox" id="voice-always-reply" /> Leer respuestas en voz alta
+      </label>
+      <button type="button" id="voice-test-btn" class="voice-nav-btn" title="Probar TTS">Probar</button>
+      <span id="voice-nav-status" class="voice-nav-status">Solo texto por defecto · marca «Leer respuestas» si quieres voz · Detener voz en cualquier momento</span>
     </div>
 
     <main>
@@ -484,11 +489,13 @@
             <li><strong>Infinitud</strong> — Motor de gramática/fragmentos: genera casos, preguntas o pasos a partir de reglas + lo aprendido.</li>
             <li><strong>Sync</strong> — Exportar o importar el corpus para usarlo en otro dispositivo.</li>
           </ul>
-          <h3>Menú por voz</h3>
-          <p>Pulsa <strong>🎤 Menú por voz</strong> y di, por ejemplo:</p>
+          <h3>Voz y texto (tú eliges)</h3>
           <ul class="help-list">
-            <li>«Abre chat» · «Abre investigar» · «Modo maestro»</li>
-            <li>«Idiomas» · «Coaching» · «Inicio» · «Ayuda»</li>
+            <li><strong>Solo texto:</strong> deja desmarcada «Leer respuestas en voz alta». CEOS escribe; tú lees.</li>
+            <li><strong>Con voz:</strong> marca esa casilla. Las respuestas se leen en voz alta.</li>
+            <li><strong>Detener voz:</strong> botón «⏹ Detener voz», tecla <kbd>Esc</kbd>, o di «Para» / «Silencio».</li>
+            <li><strong>Cambiar modalidad:</strong> pestañas arriba en cualquier momento, o di «Abre coaching», «Modo maestro»…</li>
+            <li><strong>Hablar:</strong> «Investiga…», una pregunta, o un comando de menú.</li>
           </ul>
         </div>
       </section>
@@ -862,6 +869,322 @@
     }
     // por si el DOM tarda
     setTimeout(bind, 500);
+  })();
+  </script>
+
+  
+  <script>
+  /* ===== CEOS Voice OS: comandos globales + conversación hablada ===== */
+  (function () {
+    var LABELS = {
+      chat: "Chat", home: "Inicio", maestro: "Maestro", case: "Caso",
+      learn: "Aprendizaje", coaching: "Coaching", lang: "Idiomas",
+      research: "Investigar", grammar: "Infinitud", sync: "Sync", help: "Ayuda"
+    };
+
+    function status(msg) {
+      var el = document.getElementById("voice-nav-status");
+      if (el) el.textContent = msg || "";
+    }
+
+    function getVoicesSafe() {
+      try {
+        return (window.speechSynthesis && window.speechSynthesis.getVoices()) || [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function pickVoice() {
+      var sel = document.getElementById("voice-select");
+      var voices = getVoicesSafe();
+      if (sel && sel.value) {
+        for (var i = 0; i < voices.length; i++) {
+          if (voices[i].name === sel.value) return voices[i];
+        }
+      }
+      // prefer female Spanish
+      var preferred = voices.filter(function (v) {
+        return /es/i.test(v.lang) && /female|femen|monica|paulina|sabina|lucia|lucia|helena|zira|google español/i.test(v.name + " " + (v.lang || ""));
+      });
+      if (preferred.length) return preferred[0];
+      var es = voices.filter(function (v) { return /es/i.test(v.lang); });
+      return es[0] || voices[0] || null;
+    }
+
+    function speak(text) {
+      if (!text || !window.speechSynthesis) return;
+      var always = document.getElementById("voice-always-reply");
+      if (always && !always.checked) return;
+      try {
+        window.speechSynthesis.cancel();
+        var u = new SpeechSynthesisUtterance(String(text).slice(0, 1200));
+        u.lang = "es-ES";
+        var v = pickVoice();
+        if (v) u.voice = v;
+        u.rate = 1.02;
+        window.speechSynthesis.speak(u);
+      } catch (e) {}
+    }
+    window.__ceosSpeak = speak;
+
+    function stopVoice() {
+      try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
+      window.__ceosVoiceChat = false;
+      status("Voz detenida · solo texto en pantalla");
+    }
+    window.__ceosStopVoice = stopVoice;
+
+
+    function fillVoiceSelect() {
+      var sel = document.getElementById("voice-select");
+      if (!sel || !window.speechSynthesis) return;
+      var voices = getVoicesSafe();
+      if (!voices.length) return;
+      var cur = sel.value;
+      sel.innerHTML = "";
+      voices.forEach(function (v) {
+        var opt = document.createElement("option");
+        opt.value = v.name;
+        opt.textContent = v.name + " (" + v.lang + ")";
+        sel.appendChild(opt);
+      });
+      // pick female es if possible
+      var best = pickVoice();
+      if (best) sel.value = best.name;
+      else if (cur) sel.value = cur;
+    }
+
+    function showView(name) {
+      if (window.__ceosShowView) return window.__ceosShowView(name);
+      var view = document.getElementById("view-" + name);
+      if (!view) return false;
+      document.querySelectorAll(".view").forEach(function (v) { v.classList.remove("active"); });
+      document.querySelectorAll(".tab").forEach(function (b) {
+        b.classList.toggle("active", b.getAttribute("data-view") === name);
+      });
+      view.classList.add("active");
+      return true;
+    }
+
+    function parseCommand(raw) {
+      var t = (raw || "").trim();
+      var low = t.toLowerCase();
+      // strip politeness
+      low = low.replace(/^(por favor|oye|hey|ceos|hola)\s+/i, "");
+
+      // navigation
+      var nav = [
+        [/^(abre|abrir|ve a|vamos a|modo|cambiar a|cambia a|ir a|pon|activa)\s+/, ""],
+      ];
+      var rest = low;
+      nav.forEach(function (x) { rest = rest.replace(x[0], x[1]); });
+
+      var routes = [
+        [/investigar|investigaci[oó]n|research/, "research"],
+        [/coach|calidad|call center|formaci[oó]n/, "coaching"],
+        [/idioma|ingl[eé]s|ceox|languages?/, "lang"],
+        [/maestro|mentor|c[oó]dice/, "maestro"],
+        [/aprendizaje|trayectoria/, "learn"],
+        [/caso|an[aá]lisis de sistema/, "case"],
+        [/infinitud|gram[aá]tica/, "grammar"],
+        [/sync|sincron/, "sync"],
+        [/ayuda|help|gu[ií]a/, "help"],
+        [/inicio|home|panel/, "home"],
+        [/chat|conversaci[oó]n/, "chat"]
+      ];
+
+      // "abre investigar" / "modo coaching"
+      if (/^(abre|abrir|modo|ve a|ir a|pon|activa)/.test(low) || routes.some(function (r) { return r[0].test(rest) && rest.length < 40; })) {
+        for (var i = 0; i < routes.length; i++) {
+          if (routes[i][0].test(rest) || routes[i][0].test(low)) {
+            return { type: "nav", view: routes[i][1] };
+          }
+        }
+      }
+
+      // research: "investiga X" / "busca en internet X"
+      var m = low.match(/^(investiga|investigar|busca(?:r)?(?: en internet)?|aprende sobre)\s+(.+)/i);
+      if (m && m[2]) {
+        return { type: "research", topic: m[2].trim() };
+      }
+
+      // coaching audit hint
+      if (/audita|auditor[ií]a/.test(low)) {
+        return { type: "nav", view: "coaching", say: "Abre Coaching y pega la transcripción para auditar." };
+      }
+
+      // stop speaking
+      if (/^(para|silencio|calla|stop|basta)$/.test(low)) {
+        return { type: "stop" };
+      }
+
+      // default: chat message
+      return { type: "chat", text: t };
+    }
+
+    async function handleTranscript(said) {
+      status("Has dicho: «" + said + "»");
+      var cmd = parseCommand(said);
+      if (cmd.type === "stop") {
+        try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
+        status("Silencio");
+        return;
+      }
+      if (cmd.type === "nav") {
+        if (showView(cmd.view)) {
+          var label = LABELS[cmd.view] || cmd.view;
+          status("→ " + label + " (puedes cambiar de pestaña cuando quieras)");
+          speak(cmd.say || ("Abriendo " + label));
+        } else {
+          status("No encontré esa pestaña");
+          speak("No encontré esa sección");
+        }
+        return;
+      }
+      if (cmd.type === "research") {
+        showView("research");
+        var topicEl = document.getElementById("research-topic");
+        if (topicEl) topicEl.value = cmd.topic;
+        status("Investigando: " + cmd.topic);
+        speak("Investigando " + cmd.topic);
+        var btn = document.getElementById("btn-research");
+        if (btn) btn.click();
+        return;
+      }
+      if (cmd.type === "chat") {
+        showView("chat");
+        var input = document.getElementById("chat-input");
+        if (input) input.value = cmd.text;
+        // ensure TTS for reply
+        var toggle = document.getElementById("btn-chat-voice-toggle");
+        if (toggle) toggle.classList.add("active");
+        window.__ceosVoiceChat = true;
+        if (window.__ceosSendChat) {
+          await window.__ceosSendChat();
+        } else if (input) {
+          // fallback: press send
+          var send = document.getElementById("btn-chat-send");
+          if (send) send.click();
+        }
+        return;
+      }
+    }
+
+    // Patch chat sender to speak replies when voice mode
+    var _origSend = null;
+    function hookChatSpeak() {
+      if (!window.__ceosSendChat || window.__ceosSendChat.__voiceHooked) return;
+      _origSend = window.__ceosSendChat;
+      window.__ceosSendChat = async function () {
+        await _origSend.apply(this, arguments);
+        // try to read last assistant bubble
+        try {
+          if (!window.__ceosVoiceChat) {
+            var always = document.getElementById("voice-always-reply");
+            if (!(always && always.checked)) return;
+          }
+          var bubbles = document.querySelectorAll("#chat-messages .chat-bubble.assistant .bubble-body");
+          if (bubbles.length) {
+            var last = bubbles[bubbles.length - 1].textContent || "";
+            if (last && last.indexOf("No pude") !== 0) speak(last);
+          }
+        } catch (e) {}
+        window.__ceosVoiceChat = false;
+      };
+      window.__ceosSendChat.__voiceHooked = true;
+    }
+
+    function listenOnce(opts) {
+      opts = opts || {};
+      var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) {
+        alert("Usa Chrome o Edge para voz.");
+        return;
+      }
+      var rec = new SR();
+      rec.lang = opts.lang || "es-ES";
+      rec.interimResults = false;
+      rec.maxAlternatives = 1;
+      var btn = document.getElementById("voice-os-btn");
+      rec.onstart = function () {
+        if (btn) btn.classList.add("listening");
+        status("Escuchando… habla ahora");
+      };
+      rec.onerror = function (ev) {
+        if (btn) btn.classList.remove("listening");
+        status("Micrófono: " + (ev.error || "error"));
+      };
+      rec.onend = function () {
+        if (btn) btn.classList.remove("listening");
+      };
+      rec.onresult = function (ev) {
+        if (btn) btn.classList.remove("listening");
+        var said = (ev.results[0] && ev.results[0][0] && ev.results[0][0].transcript) || "";
+        if (!said) {
+          status("No te he oído");
+          return;
+        }
+        handleTranscript(said);
+      };
+      try {
+        rec.start();
+      } catch (e) {
+        status("No se pudo iniciar el micrófono");
+      }
+    }
+
+    function bind() {
+      fillVoiceSelect();
+      if (window.speechSynthesis) {
+        window.speechSynthesis.onvoiceschanged = fillVoiceSelect;
+      }
+      var osBtn = document.getElementById("voice-os-btn");
+      if (osBtn) {
+        osBtn.addEventListener("click", function () {
+          hookChatSpeak();
+          listenOnce({});
+        });
+      }
+      var test = document.getElementById("voice-test-btn");
+      if (test) {
+        test.addEventListener("click", function () {
+          speak("Hola, soy CEOS. Puedes decir: abre investigar, o preguntarme lo que quieras.");
+          status("Reproduciendo prueba…");
+        });
+      }
+      // chat mic also routes through OS when long press style - enhance dictar
+      var chatMic = document.getElementById("btn-chat-mic");
+      if (chatMic) {
+        chatMic.addEventListener("click", function (e) {
+          // if we want OS routing for dictation into chat only
+          hookChatSpeak();
+        });
+      }
+      
+      var stopBtn = document.getElementById("voice-stop-btn");
+      if (stopBtn) {
+        stopBtn.addEventListener("click", function () {
+          if (window.__ceosStopVoice) window.__ceosStopVoice();
+          else try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
+        });
+      }
+      // Atajo de teclado Esc = detener voz
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") {
+          if (window.__ceosStopVoice) window.__ceosStopVoice();
+        }
+      });
+
+      setTimeout(hookChatSpeak, 800);
+      setTimeout(hookChatSpeak, 2000);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", bind);
+    } else {
+      bind();
+    }
   })();
   </script>
 
