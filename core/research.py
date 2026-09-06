@@ -48,6 +48,143 @@ def _strip_html(html: str) -> str:
     return text.strip()
 
 
+
+def _stem_token(tok: str) -> str:
+    """Aproxima ES/EN para que teologia ~ theology, biologia ~ biology."""
+    t = tok
+    pairs = [
+        ("teologia", "theolog"),
+        ("theology", "theolog"),
+        ("theological", "theolog"),
+        ("theologi", "theolog"),
+        ("biologia", "biolog"),
+        ("biology", "biolog"),
+        ("geologia", "geolog"),
+        ("geology", "geolog"),
+        ("astroteologia", "astrotheolog"),
+        ("astrotheology", "astrotheolog"),
+        ("astrotheological", "astrotheolog"),
+        ("exoteologia", "exotheolog"),
+        ("exotheology", "exotheolog"),
+        ("religion", "relig"),
+        ("religion", "relig"),
+        ("religión", "relig"),
+    ]
+    for a, b in pairs:
+        if t == a or t.startswith(a):
+            return b
+    # sufijos comunes
+    for suf in ("ical", "ics", "ies", "cion", "ción", "ogy", "ia", "y"):
+        if len(t) > 6 and t.endswith(suf):
+            t = t[: -len(suf)]
+            break
+    return t
+
+
+def _normalize_tokens(s: str) -> list:
+    s = (s or "").lower()
+    s = (
+        s.replace("á", "a")
+        .replace("é", "e")
+        .replace("í", "i")
+        .replace("ó", "o")
+        .replace("ú", "u")
+        .replace("ñ", "n")
+    )
+    parts = re.findall(r"[a-z0-9]{3,}", s)
+    return [_stem_token(p) for p in parts]
+
+
+# Falsos amigos: no confundir teología/religión con biología/geología por el prefijo "astro"
+_FALSE_FRIENDS = {
+    "teologia": {"biologia", "geologia", "fisica", "nomia", "nautica"},
+    "theology": {"biology", "geology", "physics", "nomy"},
+}
+
+
+def _query_variants(query: str) -> list:
+    """Variantes fieles al término (no sustitutos semánticos lejanos)."""
+    q = (query or "").strip()
+    low = q.lower()
+    variants = [q]
+    pairs = [
+        ("astroteología", "astrotheology"),
+        ("astroteologia", "astrotheology"),
+        ("teología", "theology"),
+        ("teologia", "theology"),
+        ("exoteología", "exotheology"),
+        ("exoteologia", "exotheology"),
+    ]
+    for a, b in pairs:
+        if a in low and b not in variants:
+            variants.append(b)
+        if b in low and a not in variants:
+            variants.append(a)
+    # quitar signos de pregunta tipo "qué es X"
+    m = re.search(r"(?:qu[eé]\s+es|what\s+is)\s+(.+)", low)
+    if m:
+        core = m.group(1).strip(" ?¡!.")
+        if core and core not in variants:
+            variants.append(core)
+    # dedupe
+    out = []
+    seen = set()
+    for v in variants:
+        k = v.lower()
+        if k not in seen:
+            seen.add(k)
+            out.append(v)
+    return out
+
+
+def _relevance_score(query: str, title: str, snippet: str) -> float:
+    """Puntuación 0–1 de pertinencia; penaliza falsos amigos (astrobiología vs astroteología)."""
+    q_tokens = _normalize_tokens(query)
+    if not q_tokens:
+        return 0.0
+    blob = _normalize_tokens((title or "") + " " + (snippet or ""))
+    if not blob:
+        return 0.0
+    # tokens significativos del query (ignorar qué/es/the)
+    stop = {"que", "es", "the", "what", "is", "una", "un", "sobre", "about", "define", "definir"}
+    qt = [t for t in q_tokens if t not in stop]
+    if not qt:
+        qt = q_tokens
+    hits = sum(1 for t in qt if t in blob)
+    score = hits / max(len(qt), 1)
+    # bonus si el título contiene el término compuesto o gran parte
+    title_n = " ".join(_normalize_tokens(title))
+    qn = " ".join(qt)
+    if qn and qn in title_n.replace(" ", ""):
+        score += 0.35
+    if any(t in title_n for t in qt):
+        score += 0.15
+    # penalización falsos amigos
+    for key, enemies in _FALSE_FRIENDS.items():
+        if any(key in t or t.startswith(key[:5]) for t in qt):
+            for e in enemies:
+                if e in title_n or e in " ".join(blob):
+                    # si no aparece el núcleo teolog/theology, penalizar fuerte
+                    if not any(x in title_n for x in ("teolog", "theolog", "relig", "worship", "sagrado")):
+                        score -= 0.55
+    return max(0.0, min(1.0, score))
+
+
+def _filter_rank_results(query: str, results: list, min_score: float = 0.2) -> list:
+    scored = []
+    for r in results:
+        sc = _relevance_score(query, r.get("title") or "", r.get("snippet") or "")
+        r = dict(r)
+        r["relevance"] = round(sc, 3)
+        scored.append(r)
+    scored.sort(key=lambda x: x.get("relevance", 0), reverse=True)
+    good = [r for r in scored if r.get("relevance", 0) >= min_score]
+    # si todo filtrado, devolver top 2 con score>0 en vez de basura total
+    if not good:
+        good = [r for r in scored if r.get("relevance", 0) > 0][:2]
+    return good
+
+
 def search_duckduckgo_api(query: str) -> list[dict]:
     """DuckDuckGo Instant Answer API (JSON, sin clave). Más fiable desde servidores."""
     url = (
@@ -144,14 +281,14 @@ def search_wikipedia(query: str, lang: str = "es") -> list[dict]:
     return results
 
 
-def search_duckduckgo(query: str, max_results: int = 5) -> list[dict]:
-    """Multi-fuente: DDG API + Wikipedia (+ HTML como último recurso)."""
+def search_duckduckgo(query: str, max_results: int = 8) -> list[dict]:
+    """Multi-fuente con filtro de relevancia (evita astrobiología cuando pides astroteología)."""
     results = []
     seen = set()
 
     def _add(items):
         for r in items:
-            key = (r.get("url") or "") + (r.get("title") or "")
+            key = (r.get("url") or "") + "|" + (r.get("title") or "")
             if key in seen:
                 continue
             if not (r.get("snippet") or r.get("title")):
@@ -159,16 +296,19 @@ def search_duckduckgo(query: str, max_results: int = 5) -> list[dict]:
             seen.add(key)
             results.append(r)
 
-    _add(search_duckduckgo_api(query))
-    _add(search_wikipedia(query, "es"))
-    if len(results) < 2:
-        _add(search_wikipedia(query, "en"))
+    variants = _query_variants(query)
+    for v in variants:
+        _add(search_duckduckgo_api(v))
+        _add(search_wikipedia(v, "es"))
+        _add(search_wikipedia(v, "en"))
 
-    # HTML DDG solo si aún vacío
-    if not results:
-        url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
-        html = _fetch_text(url, timeout=8)
-        if html:
+    # HTML DDG como refuerzo
+    if len(_filter_rank_results(query, results, 0.2)) < 2:
+        for v in variants[:2]:
+            url = f"https://html.duckduckgo.com/html/?q={quote_plus(v)}"
+            html = _fetch_text(url, timeout=8)
+            if not html:
+                continue
             blocks = re.findall(
                 r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>.*?class="result__snippet"[^>]*>(.*?)</',
                 html,
@@ -186,7 +326,9 @@ def search_duckduckgo(query: str, max_results: int = 5) -> list[dict]:
                     "snippet": _strip_html(snippet)[:280],
                     "source": "ddg-html",
                 }])
-    return results[:max_results]
+
+    ranked = _filter_rank_results(query, results, min_score=0.2)
+    return ranked[:max_results]
 
 
 def is_youtube_url(text: str) -> bool:
@@ -215,32 +357,14 @@ def research_topic(topic: str, focus: str = None) -> dict:
 
     all_results = []
     seen_urls = set()
-    for q in queries:
-        for r in search_duckduckgo(q, max_results=5):
-            u = r.get("url") or r.get("title")
-            if u not in seen_urls:
-                seen_urls.add(u)
-                all_results.append(r)
-    # Si pocos resultados, probar variante en inglés simple
-    if len(all_results) < 5 and topic:
-        alt = topic
-        # pistas mínimas ES→EN frecuentes en consultas religiosas/científicas
-        for a, b in (
-            ("astroteología", "astrotheology"),
-            ("astroteologia", "astrotheology"),
-            ("teología", "theology"),
-            ("qué es ", "what is "),
-            ("que es ", "what is "),
-        ):
-            if a in topic.lower():
-                alt = topic.lower().replace(a, b)
-                break
-        if alt != topic:
-            for r in search_duckduckgo(alt, max_results=5):
-                u = r.get("url") or r.get("title")
-                if u not in seen_urls:
-                    seen_urls.add(u)
-                    all_results.append(r)
+    # Una sola búsqueda multi-variante con ranking de relevancia
+    for r in search_duckduckgo(topic if not focus else f"{topic} {focus}", max_results=8):
+        u = (r.get("url") or "") + "|" + (r.get("title") or "")
+        if u not in seen_urls:
+            seen_urls.add(u)
+            all_results.append(r)
+    # Re-rank global por el tema pedido
+    all_results = _filter_rank_results(topic, all_results, min_score=0.2)
 
     # Construir resumen a partir de snippets (sin LLM externo obligatorio)
     snippets = [r["snippet"] for r in all_results if r.get("snippet")]
@@ -266,7 +390,7 @@ def research_topic(topic: str, focus: str = None) -> dict:
             "Límite honesto: no puedo ver ni escuchar vídeos de YouTube. "
             "Solo uso texto ya publicado (transcripciones, resúmenes, reseñas, artículos)."
             if youtube else
-            "Información obtenida de fuentes de texto públicas. Verifica siempre datos críticos."
+            "Fuentes públicas filtradas por relevancia al término pedido (se evitan falsos amigos). Verifica datos críticos."
         ),
         "sources": all_results[:8],
         "key_points": key_points[:8],
@@ -286,12 +410,14 @@ def research_topic(topic: str, focus: str = None) -> dict:
 
 class TopicLearner:
     """
-    Orquesta investigación + incorporación a Memory y Grammar.
+    Orquesta investigación + Memory + Grammar + Codex fractal + memoria larga.
     """
-    def __init__(self, memory, grammar, identity=None):
+    def __init__(self, memory, grammar, identity=None, codex=None, long_memory=None):
         self.memory = memory
         self.grammar = grammar
         self.identity = identity
+        self.codex = codex
+        self.long_memory = long_memory
         self.base = Path("data/research")
         self.base.mkdir(parents=True, exist_ok=True)
         self.log_file = self.base / "topics.json"
@@ -309,17 +435,49 @@ class TopicLearner:
         if not report.get("ok"):
             return report
 
-        # Incorporar fragmentos a la gramática (infinitud discreta)
         added = 0
         for frag in report.get("fragments_for_learning", []):
-            if self.grammar.learn_fragment(frag):
-                added += 1
+            try:
+                if self.grammar.learn_fragment(frag):
+                    added += 1
+            except Exception:
+                pass
 
-        # Registrar hito
-        hito_text = f"Investigado: «{topic[:80]}» — {added} fragmentos incorporados."
-        self.memory.add_hito(hito_text, device=device)
+        # Codex: comprimir conocimiento y ciclo fractal (re-cifrado / generación)
+        codex_info = {}
+        if self.codex is not None:
+            try:
+                blob = "\n".join(
+                    [f"{s.get('title','')}: {s.get('snippet','')}" for s in (report.get("sources") or [])[:6]]
+                    + (report.get("key_points") or [])[:6]
+                )
+                codex_info = self.codex.compress_text(blob[:5000], topic=topic[:80]) or {}
+                frac = self.codex.maybe_fractal_after_ingest(topic[:80])
+                if frac:
+                    codex_info["fractal"] = frac
+            except Exception as e:
+                codex_info = {"error": str(e)[:120]}
 
-        # Guardar informe local
+        # Memoria larga: hechos / temas
+        mem_info = {}
+        if self.long_memory is not None:
+            try:
+                summary = " ".join((report.get("key_points") or [])[:3])[:500]
+                mem_info = self.long_memory.absorb_turn(
+                    f"Investigación: {topic}",
+                    summary or topic,
+                    do_facts=True,
+                    do_topics=True,
+                ) or {}
+            except Exception as e:
+                mem_info = {"error": str(e)[:120]}
+
+        hito_text = f"Investigado: «{topic[:80]}» — {added} fragmentos + códice."
+        try:
+            self.memory.add_hito(hito_text, device=device)
+        except Exception:
+            pass
+
         entry = {
             "id": report.get("researched_at"),
             "topic": topic,
@@ -328,16 +486,22 @@ class TopicLearner:
             "sources_count": len(report.get("sources", [])),
             "youtube_limit_applied": report.get("youtube_limit_applied", False),
             "device": device,
+            "codex": bool(codex_info) and not codex_info.get("error"),
         }
         log = self._load_log()
         log.append(entry)
-        self._save_log(log)
+        self._save_log(log[-200:])  # limitar tamaño
 
         if self.identity:
-            self.identity.log(hito_text, importance=2)
+            try:
+                self.identity.log(hito_text, importance=2)
+            except Exception:
+                pass
 
         report["fragments_added"] = added
         report["learned"] = True
+        report["codex"] = codex_info
+        report["long_memory"] = mem_info
         return report
 
     def history(self, limit: int = 20) -> list:

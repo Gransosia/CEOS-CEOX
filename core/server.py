@@ -75,6 +75,8 @@ def get_learner():
             memory=get_memory(),
             grammar=get_grammar(),
             identity=get_identity(),
+            codex=get_codex(),
+            long_memory=get_long_memory(),
         )
     return g.learner
 
