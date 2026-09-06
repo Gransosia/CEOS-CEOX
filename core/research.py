@@ -263,14 +263,14 @@ def search_wikipedia(query: str, lang: str = "es") -> list[dict]:
         if titles:
             ext_url = (
                 f"https://{lang}.wikipedia.org/w/api.php?action=query&prop=extracts"
-                f"&exintro=1&explaintext=1&titles={quote_plus(titles[0])}&format=json"
+                f"&explaintext=1&exsectionformat=plain&titles={quote_plus(titles[0])}&format=json"
             )
             raw2 = _fetch_text(ext_url, timeout=8)
             if raw2:
                 d2 = json.loads(raw2)
                 pages = (d2.get("query") or {}).get("pages") or {}
                 for pg in pages.values():
-                    extract = (pg.get("extract") or "")[:600]
+                    extract = (pg.get("extract") or "")[:2500]
                     if extract and results:
                         results[0]["snippet"] = extract
                         break
@@ -337,47 +337,162 @@ def is_youtube_url(text: str) -> bool:
 
 def research_topic(topic: str, focus: str = None) -> dict:
     """
-    Investiga un tema.
-    - Si el tema parece un vídeo de YouTube: deja claro el límite.
-    - Busca texto publicado y construye un informe + fragmentos aprendibles.
+    Investigación estructurada (no solo reseña):
+    pregunta → fuentes relevantes → contraste → síntesis por secciones → límites → aprendizaje.
+    El informe se redacta en el idioma de la consulta (castellano si preguntas en castellano).
     """
     topic = (topic or "").strip()
     if not topic:
         return {"ok": False, "error": "Tema vacío"}
 
     youtube = is_youtube_url(topic) or "youtube" in topic.lower()
-    queries = []
-    if youtube:
-        queries.append(f"{topic} transcripción OR transcript OR resumen OR reseña")
-        queries.append(f"{topic} resumen comentarios análisis")
-    else:
-        q = topic if not focus else f"{topic} {focus}"
-        queries.append(q)
-        queries.append(f"{topic} explicación conceptos clave")
+    lang_es = bool(re.search(
+        r"[áéíóúñ¿¡]|(\b(qué|que|cómo|como|cuál|cual|dónde|donde|definición|definir|explica|investig|sobre|historia|origen)\b)",
+        topic,
+        re.I,
+    ))
+    if re.search(r"\b(what|is|the|how|define|research|about)\b", topic, re.I) and not re.search(r"[áéíóúñ¿¡]", topic):
+        lang_es = False
+    if not re.search(r"[a-zA-ZáéíóúñÁÉÍÓÚÑ]{3,}", topic):
+        lang_es = True
+    # Por defecto castellano si hay caracteres españoles o el usuario usa CEOS en ES
+    if re.search(r"[áéíóúñ¿¡]", topic):
+        lang_es = True
 
+    query = topic if not focus else f"{topic} {focus}"
     all_results = []
     seen_urls = set()
-    # Una sola búsqueda multi-variante con ranking de relevancia
-    for r in search_duckduckgo(topic if not focus else f"{topic} {focus}", max_results=8):
+    for r in search_duckduckgo(query, max_results=10):
         u = (r.get("url") or "") + "|" + (r.get("title") or "")
         if u not in seen_urls:
             seen_urls.add(u)
             all_results.append(r)
-    # Re-rank global por el tema pedido
     all_results = _filter_rank_results(topic, all_results, min_score=0.2)
 
-    # Construir resumen a partir de snippets (sin LLM externo obligatorio)
-    snippets = [r["snippet"] for r in all_results if r.get("snippet")]
+    for r in all_results[:3]:
+        url = r.get("url") or ""
+        if "wikipedia.org" in url and len(r.get("snippet") or "") < 500:
+            title = r.get("title") or ""
+            wlang = "es" if "es.wikipedia" in url else "en"
+            try:
+                ext_url = (
+                    f"https://{wlang}.wikipedia.org/w/api.php?action=query&prop=extracts"
+                    f"&explaintext=1&titles={quote_plus(title)}&format=json"
+                )
+                raw2 = _fetch_text(ext_url, timeout=10)
+                if raw2:
+                    d2 = json.loads(raw2)
+                    pages = (d2.get("query") or {}).get("pages") or {}
+                    for pg in pages.values():
+                        extract = (pg.get("extract") or "")[:3000]
+                        if extract:
+                            r["snippet"] = extract
+                            r["long_extract"] = True
+            except Exception:
+                pass
+
+    snippets = [r.get("snippet") or "" for r in all_results if r.get("snippet")]
     key_points = []
-    for s in snippets[:8]:
-        s = s.strip()
-        if len(s) > 40:
-            key_points.append(s)
+    for s in snippets:
+        s = re.sub(r"\s+", " ", s).strip()
+        if len(s) < 40:
+            continue
+        parts = re.split(r"(?<=\.)\s+", s)
+        for part in parts:
+            part = part.strip()
+            if len(part) > 60:
+                key_points.append(part[:420])
+            if len(key_points) >= 14:
+                break
+        if len(key_points) >= 14:
+            break
+
+    deduped = []
+    for kp in key_points:
+        if not any(kp[:50] == d[:50] for d in deduped):
+            deduped.append(kp)
+    key_points = deduped[:12]
+
+    def _report_es():
+        definicion = key_points[0] if key_points else "No hay una definición única consolidada en las fuentes recuperadas."
+        contexto = key_points[1] if len(key_points) > 1 else "El contexto aparece de forma fragmentaria en las fuentes."
+        dimensiones = key_points[2:7] if len(key_points) > 2 else key_points
+        contrastes = key_points[7:11] if len(key_points) > 7 else []
+        lines = [
+            f"## Investigación: {topic}",
+        ]
+        if focus:
+            lines.append(f"**Enfoque:** {focus}")
+        lines += [
+            "",
+            "### 1. Pregunta y objeto",
+            f"Se investiga «{topic}» con fuentes públicas de texto, filtrando por relevancia real al término (no vecinos léxicos engañosos).",
+            "",
+            "### 2. Definición operativa",
+            definicion,
+            "",
+            "### 3. Contexto y marco",
+            contexto,
+            "",
+            "### 4. Hallazgos principales",
+        ]
+        if dimensiones:
+            for i, d in enumerate(dimensiones, 1):
+                lines.append(f"{i}. {d}")
+        else:
+            lines.append("No se han podido estructurar hallazgos suficientes.")
+        lines += ["", "### 5. Matices, límites y contrastes"]
+        if contrastes:
+            for c in contrastes:
+                lines.append(f"- {c}")
+        else:
+            lines.append("- Las fuentes son heterogéneas; parte del material puede estar en inglés.")
+            lines.append("- No sustituye una revisión académica sistemática ni literatura de pago.")
+        lines += ["", "### 6. Fuentes consultadas"]
+        for s in all_results[:8]:
+            title = s.get("title") or "Sin título"
+            url = s.get("url") or ""
+            rel = s.get("relevance", "")
+            extra = f" (relevancia {rel})" if rel != "" else ""
+            lines.append(f"- {title}" + (f" — {url}" if url else "") + extra)
+        lines += [
+            "",
+            "### 7. Conclusión provisional",
+            f"Sobre «{topic}», la evidencia textual permite una aproximación informada y revisable. "
+            "El motor conserva fragmentos para memoria y códice si el aprendizaje está activo.",
+        ]
+        return "\n".join(lines)
+
+    def _report_en():
+        lines = [
+            f"## Research report: {topic}",
+            "",
+            "### 1. Question",
+            f"Inquiry into “{topic}” using public text sources with relevance filtering.",
+            "",
+            "### 2. Working definition",
+            key_points[0] if key_points else "No consolidated definition in retrieved sources.",
+            "",
+            "### 3. Context",
+            key_points[1] if len(key_points) > 1 else "Context remains fragmentary.",
+            "",
+            "### 4. Main findings",
+        ]
+        for i, d in enumerate((key_points[2:8] or key_points), 1):
+            lines.append(f"{i}. {d}")
+        lines += ["", "### 5. Limits", "- Public-web synthesis only; not a peer-reviewed systematic review.", "", "### 6. Sources"]
+        for s in all_results[:8]:
+            lines.append(f"- {s.get('title') or ''} — {s.get('url') or ''}")
+        return "\n".join(lines)
+
+    report_text = _report_es() if lang_es else _report_en()
+
+    # Si el contenido fuente está en inglés pero el usuario preguntó en ES, enmarcar en castellano
+    # (las citas pueden quedar en inglés; la estructura y el metalenguaje van en ES)
 
     fragments = []
-    for kp in key_points[:5]:
-        # Fragmentos cortos utilizables por la gramática / memoria
-        frag = re.sub(r"\s+", " ", kp)[:180]
+    for kp in key_points[:8]:
+        frag = re.sub(r"\s+", " ", kp)[:220]
         if frag:
             fragments.append(frag)
 
@@ -385,27 +500,32 @@ def research_topic(topic: str, focus: str = None) -> dict:
         "ok": True,
         "topic": topic,
         "focus": focus,
+        "lang": "es" if lang_es else "en",
         "youtube_limit_applied": youtube,
         "disclaimer": (
-            "Límite honesto: no puedo ver ni escuchar vídeos de YouTube. "
-            "Solo uso texto ya publicado (transcripciones, resúmenes, reseñas, artículos)."
-            if youtube else
-            "Fuentes públicas filtradas por relevancia al término pedido (se evitan falsos amigos). Verifica datos críticos."
+            "Investigación con fuentes públicas. Informe estructurado con filtro de relevancia; "
+            "no es una revisión sistemática académica. Verifica datos críticos."
+            if lang_es else
+            "Public-source structured research with relevance filtering; not a systematic academic review."
         ),
-        "sources": all_results[:8],
-        "key_points": key_points[:8],
+        "summary": report_text,
+        "sources": all_results[:10],
+        "key_points": key_points[:12],
         "fragments_for_learning": fragments,
         "researched_at": _now(),
+        "depth": "structured_report",
     }
 
     if not all_results:
         report["ok"] = False
         report["error"] = (
-            "No se pudieron obtener resultados (sin conexión o bloqueo temporal). "
-            "Inténtalo más tarde o reformula el tema."
+            "No se pudieron obtener resultados relevantes. Reformula el tema o inténtalo más tarde."
+            if lang_es else
+            "No relevant results retrieved. Reformulate or try later."
         )
 
     return report
+
 
 
 class TopicLearner:

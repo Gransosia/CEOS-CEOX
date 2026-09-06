@@ -1225,10 +1225,12 @@ document.getElementById("btn-research")?.addEventListener("click", async () => {
     if (report.youtube_limit_applied) {
       msg += "⚠ Límite YouTube aplicado: solo texto publicado (transcripciones/reseñas).\n\n";
     }
-    msg += report.disclaimer + "\n\n";
-    if (report.key_points && report.key_points.length) {
+    if (report.disclaimer) msg += report.disclaimer + "\n\n";
+    if (report.summary) {
+      msg += report.summary + "\n";
+    } else if (report.key_points && report.key_points.length) {
       msg += "Puntos clave:\n";
-      report.key_points.slice(0, 5).forEach((p, i) => {
+      report.key_points.slice(0, 12).forEach((p, i) => {
         msg += `${i + 1}. ${p}\n`;
       });
     }
