@@ -335,7 +335,7 @@ def is_youtube_url(text: str) -> bool:
     return bool(re.search(r"(youtube\.com|youtu\.be)/", text, re.I))
 
 
-def research_topic(topic: str, focus: str = None) -> dict:
+def research_topic(topic: str, focus: str = None, library=None) -> dict:
     """
     Investigación estructurada (no solo reseña):
     pregunta → fuentes relevantes → contraste → síntesis por secciones → límites → aprendizaje.
@@ -516,12 +516,88 @@ def research_topic(topic: str, focus: str = None) -> dict:
         "depth": "structured_report",
     }
 
-    if not all_results:
+    # Reservorio local: si no hay web O siempre como refuerzo cuando hay biblioteca
+    reservoir_used = False
+    if library is not None:
+        try:
+            lens = "estilo" if re.search(r"estilo|literar|narrativ|voz", (focus or "") + topic, re.I) else "temas"
+            if re.search(r"crític|critic|valor|limit", (focus or ""), re.I):
+                lens = "critica"
+            if re.search(r"estructur|composic", (focus or ""), re.I):
+                lens = "estructura"
+            study = library.study(
+                query=topic,
+                lens=lens,
+                limit_docs=6,
+                sample_chunks=10,
+                grammar=None,
+                codex=None,
+            )
+            if study.get("docs_used"):
+                reservoir_used = True
+                for r in (study.get("readings") or []):
+                    all_results.append({
+                        "title": r.get("title") or "Reservorio",
+                        "url": f"reservoir://{r.get('doc_id') or ''}",
+                        "snippet": (r.get("excerpt") or r.get("conclusion") or "")[:2000],
+                        "source": "reservorio",
+                        "author": r.get("author"),
+                        "relevance": 1.0,
+                    })
+                    if r.get("excerpt"):
+                        key_points.append(re.sub(r"\s+", " ", r["excerpt"])[:420])
+                for c in (study.get("conclusions") or []):
+                    key_points.append(c[:420])
+                lines = [
+                    f"## Investigación: {topic}",
+                ]
+                if focus:
+                    lines.append(f"**Enfoque:** {focus}")
+                lines += [
+                    "",
+                    "### Fuentes",
+                    "Prioridad: **reservorio local** (libros/documentos cargados en Maestro).",
+                    "Internet no aportó resultados públicos útiles sobre este autor/tema."
+                    if not [x for x in all_results if x.get("source") != "reservorio"] else
+                    "Combinado con fuentes web.",
+                    "",
+                    "### Lectura del reservorio",
+                    study.get("meta_conclusion") or "",
+                    "",
+                    "### Hallazgos desde tus textos",
+                ]
+                for i, kp in enumerate(key_points[:10], 1):
+                    lines.append(f"{i}. {kp}")
+                lines += [
+                    "",
+                    "### Conclusión provisional",
+                    "Informe generado a partir del material del reservorio. "
+                    "Puedes releer con otro lente en Maestro → Releer reservorio.",
+                ]
+                report["summary"] = "\n".join(lines)
+                report["lang"] = "es"
+                report["sources"] = all_results[:12]
+                report["key_points"] = key_points[:12]
+                report["fragments_for_learning"] = [
+                    re.sub(r"\s+", " ", kp)[:220] for kp in key_points[:8] if len(kp) > 40
+                ]
+                report["ok"] = True
+                report["reservoir_used"] = True
+                report.pop("error", None)
+                report["disclaimer"] = (
+                    "Informe basado en el reservorio local (y web si hubo resultados). "
+                    "No sustituye una crítica literaria académica."
+                )
+        except Exception as e:
+            report["reservoir_error"] = str(e)[:160]
+
+    if not all_results and not reservoir_used:
         report["ok"] = False
         report["error"] = (
-            "No se pudieron obtener resultados relevantes. Reformula el tema o inténtalo más tarde."
+            "No hay resultados en internet ni en el reservorio. "
+            "Carga libros en Maestro → Reservorio y vuelve a investigar."
             if lang_es else
-            "No relevant results retrieved. Reformulate or try later."
+            "No relevant results on the web or in the local reservoir. Upload documents in Maestro first."
         )
 
     return report
@@ -532,12 +608,13 @@ class TopicLearner:
     """
     Orquesta investigación + Memory + Grammar + Codex fractal + memoria larga.
     """
-    def __init__(self, memory, grammar, identity=None, codex=None, long_memory=None):
+    def __init__(self, memory, grammar, identity=None, codex=None, long_memory=None, library=None):
         self.memory = memory
         self.grammar = grammar
         self.identity = identity
         self.codex = codex
         self.long_memory = long_memory
+        self.library = library
         self.base = Path("data/research")
         self.base.mkdir(parents=True, exist_ok=True)
         self.log_file = self.base / "topics.json"
@@ -551,7 +628,7 @@ class TopicLearner:
         self.log_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def learn(self, topic: str, focus: str = None, device: str = None) -> dict:
-        report = research_topic(topic, focus=focus)
+        report = research_topic(topic, focus=focus, library=self.library)
         if not report.get("ok"):
             return report
 

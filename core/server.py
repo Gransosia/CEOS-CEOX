@@ -121,6 +121,7 @@ def get_learner():
             identity=get_identity(),
             codex=get_codex(),
             long_memory=get_long_memory(),
+            library=get_library(),
         )
     return g.learner
 
@@ -436,7 +437,7 @@ def api_research():
             if learn:
                 report = get_learner().learn(topic, focus=focus, device=device)
             else:
-                report = research_topic(topic, focus=focus)
+                report = research_topic(topic, focus=focus, library=get_library())
         except Exception as e:
             # fallback: investigación sin aprendizaje
             try:
