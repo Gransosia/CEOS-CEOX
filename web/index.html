@@ -863,10 +863,10 @@
         });
         clearTimeout(timer);
         var report = await res.json().catch(function () { return {}; });
-        if (!res.ok || report.ok === false) {
+        if (report.ok === false || (!res.ok && !report.summary)) {
           if (box) {
             box.className = "result warn";
-            box.textContent = report.error || ("Error HTTP " + res.status);
+            box.textContent = report.error || report.disclaimer || ("Error HTTP " + res.status);
           }
           return;
         }
@@ -1483,11 +1483,11 @@
         var res = await fetch("/api/mentor/ingest/file", { method: "POST", body: fd });
         var data = await res.json().catch(function () { return {}; });
         var r = (data.results && data.results[0]) || {};
-        if (res.ok && (data.ok || r.status === "ok")) {
+        if (data.ok || r.status === "ok") {
           okN++;
-          lines.push("✓ " + file.name + " (" + (r.chunks || 0) + " trozos)");
+          lines.push("✓ " + file.name + " (" + (r.chunks || 0) + " trozos, " + (r.chars || 0) + " chars)");
         } else {
-          lines.push("✗ " + file.name + ": " + (r.error || data.error || res.status));
+          lines.push("✗ " + file.name + ": " + (r.error || data.error || ("HTTP " + res.status)));
         }
       } catch (e) {
         lines.push("✗ " + file.name + ": " + e.message);

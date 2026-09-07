@@ -171,24 +171,47 @@ def _extract_pdf(path: Path) -> str:
 
 
 def _extract_docx(path: Path) -> str:
+    """Extrae texto de DOCX real (Word). Varios intentos."""
+    # 1) XML directo
     try:
         import zipfile
         from xml.etree import ElementTree as ET
         with zipfile.ZipFile(path) as z:
-            xml = z.read("word/document.xml")
-        root = ET.fromstring(xml)
-        ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
-        paras = []
-        for p in root.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p"):
-            texts = [
-                t.text for t in p.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t")
-                if t.text
-            ]
-            if texts:
-                paras.append("".join(texts))
-        return "\n\n".join(paras)
-    except Exception as e:
-        raise RuntimeError(f"No se pudo leer el DOCX: {e}") from e
+            names = [n for n in z.namelist() if n.startswith("word/") and n.endswith(".xml")]
+            parts = []
+            for name in sorted(names):
+                if "document" not in name and "header" not in name and "footer" not in name:
+                    continue
+                try:
+                    xml = z.read(name)
+                    root = ET.fromstring(xml)
+                except Exception:
+                    continue
+                for t in root.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t"):
+                    if t.text:
+                        parts.append(t.text)
+                    if t.tail:
+                        parts.append(t.tail)
+            text = "\n".join(parts)
+            text = re.sub(r"\n{3,}", "\n\n", text).strip()
+            if len(text) > 20:
+                return text
+    except Exception:
+        pass
+    # 2) python-docx si está instalado
+    try:
+        import docx  # type: ignore
+        d = docx.Document(str(path))
+        paras = [p.text.strip() for p in d.paragraphs if p.text and p.text.strip()]
+        text = "\n\n".join(paras)
+        if len(text) > 20:
+            return text
+    except Exception:
+        pass
+    raise RuntimeError(
+        "No se pudo leer el DOCX. Prueba a guardarlo como .txt o .pdf desde Word."
+    )
+
 
 
 def chunk_text(text: str, max_chars: int = 400) -> list[str]:

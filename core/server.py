@@ -33,7 +33,28 @@ from .evolution_scale import EvolutionScale
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = BASE_DIR / "web"
 import os as _os
-DATA_DIR = Path(_os.environ.get("CEOS_DATA_DIR") or _os.environ.get("DATA_DIR") or (BASE_DIR / "data"))
+import tempfile as _tempfile
+
+def _resolve_data_dir() -> Path:
+    candidates = []
+    env = _os.environ.get("CEOS_DATA_DIR") or _os.environ.get("DATA_DIR")
+    if env:
+        candidates.append(Path(env))
+    candidates.append(BASE_DIR / "data")
+    candidates.append(Path("/var/data"))
+    candidates.append(Path(_tempfile.gettempdir()) / "ceos_data")
+    for c in candidates:
+        try:
+            c.mkdir(parents=True, exist_ok=True)
+            t = c / ".write_test"
+            t.write_text("ok", encoding="utf-8")
+            t.unlink(missing_ok=True)
+            return c
+        except Exception:
+            continue
+    return Path(_tempfile.gettempdir()) / "ceos_data"
+
+DATA_DIR = _resolve_data_dir()
 KNOWLEDGE_DIR = BASE_DIR / "knowledge"
 
 app = Flask(__name__, static_folder=None)
@@ -401,21 +422,34 @@ def api_sync_status():
 # ---------- Investigación / Aprendizaje de temas ----------
 @app.route("/api/research", methods=["POST"])
 def api_research():
-    data = request.get_json(force=True) or {}
-    topic = data.get("topic") or data.get("tema")
-    focus = data.get("focus")
-    learn = data.get("learn", True)
-    device = data.get("device") or request.headers.get("X-Device-Id")
+    try:
+        data = request.get_json(force=True) or {}
+        topic = data.get("topic") or data.get("tema")
+        focus = data.get("focus")
+        learn = data.get("learn", True)
+        device = data.get("device") or request.headers.get("X-Device-Id")
 
-    if not topic:
-        return jsonify({"error": "falta 'topic' o 'tema'"}), 400
+        if not topic:
+            return jsonify({"ok": False, "error": "falta 'topic' o 'tema'"}), 400
 
-    if learn:
-        report = get_learner().learn(topic, focus=focus, device=device)
-    else:
-        report = research_topic(topic, focus=focus)
-
-    return jsonify(report)
+        try:
+            if learn:
+                report = get_learner().learn(topic, focus=focus, device=device)
+            else:
+                report = research_topic(topic, focus=focus)
+        except Exception as e:
+            # fallback: investigación sin aprendizaje
+            try:
+                report = research_topic(topic, focus=focus)
+                report["learn_error"] = str(e)[:200]
+            except Exception as e2:
+                return jsonify({"ok": False, "error": f"Investigación falló: {e2}"}), 200
+        if not isinstance(report, dict):
+            report = {"ok": False, "error": "respuesta interna inválida"}
+        report.setdefault("ok", True)
+        return jsonify(report)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Error servidor investigación: {e}"}), 200
 
 
 @app.route("/api/research/history")
@@ -638,121 +672,87 @@ def api_mentor_ingest_text():
 
 @app.route("/api/mentor/ingest/file", methods=["POST"])
 def api_mentor_ingest_file():
-    """
-    Reservorio masivo. Acepta muchos archivos en una petición (campo file repetido)
-    o de uno en uno. Formatos texto + ZIP + medios.
-    """
+    """Subida al reservorio — a prueba de fallos (siempre JSON)."""
     import uuid as _uuid
-    from .ingest import TEXT_SUFFIXES, MEDIA_SUFFIXES, ARCHIVE_SUFFIXES
-
-    files = []
-    if request.files:
-        files = request.files.getlist("file")
-        if not files:
-            files = request.files.getlist("files")
-        if not files:
-            files = list(request.files.values())
-
-    if not files:
-        return jsonify({"ok": False, "error": "No se envió ningún archivo", "results": []}), 400
-
-    author = (request.form.get("author") or request.form.get("autor") or "").strip() or None
-    tags_raw = (request.form.get("tags") or "").strip()
-    tags = [t.strip() for t in tags_raw.split(",") if t.strip()] if tags_raw else ["upload"]
-    light = (request.form.get("light") or "1") not in ("0", "false", "no")  # por defecto ligero=rápido
-
-    lib = get_library()
-    grm = get_grammar()
-    results = []
-    upload_dir = DATA_DIR / "uploads"
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    allowed = TEXT_SUFFIXES | MEDIA_SUFFIXES | ARCHIVE_SUFFIXES
-    max_files = 150
-
-    for i, f in enumerate(files):
-        if i >= max_files:
-            results.append({"file": "(límite)", "status": "error", "error": f"Máximo {max_files} archivos"})
-            break
-        original = (getattr(f, "filename", None) or "").strip()
-        if not original:
-            continue
-        suffix = Path(original).suffix.lower()
-        if not suffix or suffix not in allowed:
-            results.append({"file": original, "status": "error", "error": f"Formato no soportado: {suffix or '(sin extensión)'}"})
-            continue
-        # nombre seguro sin perder extensión (evita vacío con tildes/espacios raros)
-        stem = Path(original).stem
-        safe_stem = re.sub(r"[^\w\-]+", "_", stem, flags=re.U)[:80] or "doc"
-        name = f"{safe_stem}_{_uuid.uuid4().hex[:8]}{suffix}"
-        dest = upload_dir / name
-        try:
-            f.save(str(dest))
-            if not dest.exists() or dest.stat().st_size == 0:
-                results.append({"file": original, "status": "error", "error": "Archivo vacío o no guardado"})
-                continue
-            if suffix in ARCHIVE_SUFFIXES:
-                batch = lib.ingest_archive(
-                    dest,
-                    grammar=grm,
-                    codex=None if light else get_codex(),
-                    author=author,
-                    tags=tags,
-                    max_files=200,
-                )
-                results.append({
-                    "file": original,
-                    "status": "ok",
-                    "kind": "zip",
-                    "ingested": batch.get("ingested"),
-                    "errors": (batch.get("errors") or [])[:10],
-                })
-            else:
-                entry = lib.ingest_file(
-                    dest,
-                    title=Path(original).stem,
-                    tags=tags,
-                    grammar=grm,
-                    author=author,
-                    codex=None if light else get_codex(),
-                )
-                if not light and entry.get("chars", 0) > 40:
-                    try:
-                        text_path = lib.docs_dir / entry["stored_as"]
-                        if text_path.exists():
-                            get_mentor().ingest_to_codex(
-                                text_path.read_text(encoding="utf-8", errors="replace")[:12000],
-                                topic=((author + " — ") if author else "") + entry["title"],
-                            )
-                    except Exception:
-                        pass
-                results.append({
-                    "file": original,
-                    "status": "ok",
-                    "id": entry.get("id"),
-                    "chunks": entry.get("chunks"),
-                    "chars": entry.get("chars"),
-                    "kind": entry.get("kind"),
-                    "has_transcript": entry.get("has_transcript"),
-                    "honest_limit": entry.get("honest_limit"),
-                })
-        except Exception as e:
-            results.append({"file": original, "status": "error", "error": str(e)[:240]})
-
-    ok_n = sum(1 for r in results if r.get("status") == "ok")
-    # snapshot ligero de escala opcional
+    import traceback as _tb
     try:
-        get_scale().measure_and_record(
-            library=lib, codex=get_codex(), evolve_engine=get_evolve(), long_memory=None,
-        )
-    except Exception:
-        pass
-    return jsonify({
-        "ok": ok_n > 0,
-        "uploaded": ok_n,
-        "total": len(results),
-        "results": results,
-        "library_stats": lib.stats(),
-    }), (200 if ok_n > 0 else 400)
+        files = []
+        if request.files:
+            files = request.files.getlist("file")
+            if not files:
+                files = request.files.getlist("files")
+            if not files:
+                files = [request.files[k] for k in request.files]
+        if not files:
+            return jsonify({"ok": False, "error": "No se envió ningún archivo", "results": []})
+
+        author = (request.form.get("author") or "").strip() or None
+        tags_raw = (request.form.get("tags") or "").strip()
+        tags = [x.strip() for x in tags_raw.split(",") if x.strip()] or ["upload"]
+
+        try:
+            from .ingest import DocumentLibrary, TEXT_SUFFIXES, MEDIA_SUFFIXES, ARCHIVE_SUFFIXES
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"ingest import: {e}", "results": []})
+
+        try:
+            lib = get_library()
+        except Exception:
+            lib = DocumentLibrary(base_path=str(DATA_DIR / "library"))
+
+        try:
+            grm = get_grammar()
+        except Exception:
+            grm = None
+
+        upload_dir = DATA_DIR / "uploads"
+        try:
+            upload_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            upload_dir = Path(_tempfile.gettempdir()) / "ceos_uploads"
+            upload_dir.mkdir(parents=True, exist_ok=True)
+
+        allowed = set(TEXT_SUFFIXES) | set(MEDIA_SUFFIXES) | set(ARCHIVE_SUFFIXES)
+        results = []
+
+        for i, f in enumerate(files[:100]):
+            original = (getattr(f, "filename", None) or f"file{i}.txt")
+            suffix = Path(original).suffix.lower() or ".txt"
+            if suffix not in allowed:
+                results.append({"file": original, "status": "error", "error": f"Formato no soportado: {suffix}"})
+                continue
+            safe = re.sub(r"[^\w\-.]+", "_", Path(original).name)[:100] or f"doc{i}{suffix}"
+            dest = upload_dir / f"{_uuid.uuid4().hex[:10]}_{safe}"
+            try:
+                f.save(str(dest))
+            except Exception as e:
+                results.append({"file": original, "status": "error", "error": f"save: {e}"})
+                continue
+            try:
+                if suffix in ARCHIVE_SUFFIXES:
+                    batch = lib.ingest_archive(dest, grammar=grm, author=author, tags=tags, max_files=100)
+                    results.append({"file": original, "status": "ok", "kind": "zip", "ingested": batch.get("ingested")})
+                else:
+                    entry = lib.ingest_file(dest, title=Path(original).stem, tags=tags, grammar=grm, author=author, codex=None)
+                    results.append({
+                        "file": original,
+                        "status": "ok",
+                        "id": entry.get("id"),
+                        "chunks": entry.get("chunks"),
+                        "chars": entry.get("chars"),
+                        "kind": entry.get("kind"),
+                    })
+            except Exception as e:
+                results.append({"file": original, "status": "error", "error": str(e)[:300]})
+
+        ok_n = sum(1 for r in results if r.get("status") == "ok")
+        try:
+            stats = lib.stats()
+        except Exception:
+            stats = {}
+        return jsonify({"ok": ok_n > 0, "uploaded": ok_n, "total": len(results), "results": results, "library_stats": stats, "data_dir": str(DATA_DIR)})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e), "trace": _tb.format_exc()[-500:], "results": []})
 
 
 @app.route("/api/mentor/ingest/seed", methods=["POST"])
