@@ -168,6 +168,21 @@
       </section>
 
 <section id="view-home" class="view">
+        <div class="card" id="evolution-scale-card">
+          <h2>Escala de evolución</h2>
+          <p class="muted">Por defecto: evolución desde el <strong>origen</strong> (primera medición) hasta <strong>ahora</strong>. También puedes elegir otras fechas. Cristales y mapas del códice son el núcleo de esta memoria-poliedro.</p>
+          <div id="scale-now" class="result">Cargando escala…</div>
+          <div id="scale-origin-now" class="result ok" style="margin-top:8px">Origen → ahora: …</div>
+          <div class="chat-compose" style="margin-top:10px;gap:8px;flex-wrap:wrap">
+            <label class="muted">Desde <input type="date" id="scale-since" /></label>
+            <label class="muted">Hasta <input type="date" id="scale-until" /></label>
+            <button type="button" class="primary" id="btn-scale-refresh">Actualizar / medir</button>
+            <button type="button" id="btn-scale-history">Ver periodo</button>
+          </div>
+          <div id="scale-history" class="result hidden" style="margin-top:10px"></div>
+          <p class="muted" style="margin-top:8px">Escala G0–G6 (0–100): Semilla → Germinal → Aprendiz → Operativo → Integrado → Maduro → Expansivo.</p>
+        </div>
+
         <div class="card">
           <h2>Identidad del Motor</h2>
           <div id="identity-box" class="mono">cargando…</div>
@@ -194,8 +209,12 @@
           <div id="seed-result" class="result hidden"></div>
 
           <label style="margin-top:16px">Subir documentos (PDF, DOCX, TXT, MD)</label>
-          <input type="file" id="upload-files" multiple accept=".pdf,.docx,.txt,.md,.markdown" />
-          <button class="primary" id="btn-upload">Incorporar archivos a la biblioteca</button>
+          <p class="muted">Reservorio: libros y documentos a granel (PDF, DOCX, TXT, MD, EPUB, HTML, ZIP…). Audio/vídeo se guardan como referencia; para indexar el contenido sube también .srt/.vtt/.txt.</p>
+          <input type="text" id="upload-author" placeholder="Autor (ej: David de la Fuente Alonso)" />
+          <input type="text" id="upload-tags" placeholder="Etiquetas (ej: novela, referencia, coaching)" />
+          <input type="file" id="upload-files" multiple accept=".pdf,.docx,.txt,.md,.markdown,.epub,.html,.htm,.rtf,.odt,.csv,.json,.zip,.srt,.vtt,.mp3,.wav,.m4a,.mp4,.webm,.mkv" />
+          <button type="button" class="primary" id="btn-upload">Incorporar al reservorio</button>
+          <div id="library-stats" class="muted"></div>
           <div id="upload-result" class="result hidden"></div>
         </div>
 
@@ -321,7 +340,8 @@
           <h2>Incorporar conocimiento (texto)</h2>
           <p class="muted">Pega apuntes, resúmenes o fragmentos. Se trocean y alimentan la infinitud discreta del Maestro.</p>
           <label>Título</label>
-          <input type="text" id="ingest-title" placeholder="Ej: Notas sobre Semilla y Posesión" />
+          <input type="text" id="ingest-title" placeholder="Ej: Capítulo 1 — título de la obra" />
+          <input type="text" id="ingest-author" placeholder="Autor" />
           <label>Texto</label>
           <textarea id="ingest-text" rows="4" placeholder="Pega aquí el contenido…"></textarea>
           <button class="primary" id="btn-ingest">Incorporar a la biblioteca</button>
@@ -331,6 +351,23 @@
         <div class="card">
           <h2>Biblioteca del Maestro</h2>
           <ul id="library-list" class="list"></ul>
+          <div class="card" style="margin-top:12px">
+            <h3>Releer reservorio (otras conclusiones)</h3>
+            <p class="muted">Misma biblioteca, distinto lente: estilo, temas, crítica… Cada lectura puede integrar nuevas conclusiones al códice.</p>
+            <input type="text" id="study-query" placeholder="Tema o autor en el reservorio (ej: David de la Fuente Alonso)" />
+            <select id="study-lens">
+              <option value="general">General</option>
+              <option value="estilo">Estilo</option>
+              <option value="temas">Temas</option>
+              <option value="estructura">Estructura</option>
+              <option value="critica">Crítica</option>
+              <option value="practico">Práctico</option>
+              <option value="comparar">Comparar</option>
+              <option value="evolucion">Evolución (releer)</option>
+            </select>
+            <button type="button" class="primary" id="btn-library-study">Estudiar desde el reservorio</button>
+            <div id="study-result" class="result hidden"></div>
+          </div>
         </div>
       </section>
 
@@ -1296,6 +1333,126 @@
     if (document.readyState==="loading") document.addEventListener("DOMContentLoaded", bindEvolve);
     else bindEvolve();
     setTimeout(bindEvolve, 700);
+  })();
+  </script>
+
+  
+  <script>
+  (function(){
+    function bindStudy(){
+      var btn = document.getElementById("btn-library-study");
+      if (!btn || btn.__bound) return;
+      btn.__bound = true;
+      btn.addEventListener("click", async function(){
+        var q = ((document.getElementById("study-query")||{}).value||"").trim();
+        var lens = ((document.getElementById("study-lens")||{}).value)||"general";
+        var box = document.getElementById("study-result");
+        if (box) { box.classList.remove("hidden"); box.className="result"; box.textContent="Releyendo reservorio…"; }
+        try {
+          var res = await fetch("/api/library/study", {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({query:q, lens:lens})
+          });
+          var data = await res.json();
+          if (!data.ok && data.ok !== undefined) throw new Error(data.error||"error");
+          var msg = (data.meta_conclusion||"") + "\\n\\n";
+          (data.conclusions||[]).forEach(function(c,i){ msg += (i+1)+". "+c+"\\n"; });
+          (data.readings||[]).forEach(function(r){
+            msg += "\\n— "+(r.title||"")+(r.author?(" · "+r.author):"")+"\\n"+(r.excerpt||"").slice(0,280)+"\\n";
+          });
+          if (box) { box.className="result ok"; box.textContent = msg || "Sin documentos en el reservorio para esa consulta."; }
+        } catch(e) {
+          if (box) { box.className="result warn"; box.textContent="Error: "+e.message; }
+        }
+      });
+    }
+    if (document.readyState==="loading") document.addEventListener("DOMContentLoaded", bindStudy);
+    else bindStudy();
+    setTimeout(bindStudy, 800);
+  })();
+  </script>
+
+  
+  <script>
+  (function(){
+    function fmtScale(data){
+      if (!data) return "Sin datos";
+      var L = data.level || {};
+      var m = data.metrics || {};
+      var nl = "\n";
+      var msg = "Nivel: " + (L.name || "?") + "  ·  Puntuación: " + (data.score ?? "?") + "/100" + nl;
+      msg += (L.description || "") + nl + nl;
+      msg += "Documentos: " + (m.library_docs||0) + "  ·  Caracteres: " + (m.library_chars||0) + "  ·  Trozos: " + (m.library_chunks||0) + nl;
+      msg += "Códice: " + (m.codex_crystals||0) + " cristales, " + (m.codex_maps||0) + " mapas  ·  Fractal G" + (m.fractal_generation||0) + nl;
+      msg += "Ciclos evolución: " + (m.evolve_runs||0) + "  ·  Correcciones (falso): " + (m.retracts_falsehoods||0) + nl;
+      if (m.policy && m.policy.mode) msg += "Política interna: " + m.policy.mode + nl;
+      var ph = data.polyhedron;
+      if (ph) {
+        msg += nl + "Poliedro de memoria (faceta dominante: " + (ph.dominant_face||"?") + ")" + nl;
+        (ph.faces||[]).forEach(function(f){
+          msg += "· " + f.face + ": " + f.value + " — " + f.role + nl;
+        });
+      }
+      return msg;
+    }
+    function fmtOriginNow(data){
+      var o = data && data.origin_to_now;
+      var nl = "\n";
+      if (!o) return "Origen → ahora: aún solo hay una medición (esta). Vuelve tras aprender más.";
+      return "Origen → ahora: " + (o.score_from ?? "?") + " → " + (o.score_to ?? "?") +
+        " (Δ " + (o.score_delta ?? "?") + ")" + nl +
+        (o.level_from||"") + "  →  " + (o.level_to||"") + nl +
+        "Desde " + String(o.from_at||"").slice(0,19) + " hasta " + String(o.to_at||"").slice(0,19);
+    }
+    async function loadScale(record){
+      var box = document.getElementById("scale-now");
+      if (box) box.textContent = "Midiendo…";
+      try {
+        var res = await fetch("/api/evolve/scale?record=" + (record ? "1" : "0"));
+        var data = await res.json();
+        if (box) { box.className = "result ok"; box.textContent = fmtScale(data); }
+        var obox = document.getElementById("scale-origin-now");
+        if (obox) obox.textContent = fmtOriginNow(data);
+      } catch(e) {
+        if (box) { box.className = "result warn"; box.textContent = "No se pudo medir: " + e.message; }
+      }
+    }
+    async function loadHistory(){
+      var since = (document.getElementById("scale-since")||{}).value;
+      var until = (document.getElementById("scale-until")||{}).value;
+      var q = [];
+      if (since) q.push("since=" + encodeURIComponent(since + "T00:00:00+00:00"));
+      if (until) q.push("until=" + encodeURIComponent(until + "T23:59:59+00:00"));
+      var box = document.getElementById("scale-history");
+      if (box) { box.classList.remove("hidden"); box.className = "result"; box.textContent = "Cargando historial…"; }
+      try {
+        var res = await fetch("/api/evolve/scale/history?" + q.join("&"));
+        var data = await res.json();
+        var msg = "Snapshots: " + (data.count||0) + "\\n";
+        if (data.delta) {
+          msg += "Cambio en el periodo: " + data.delta.score_from + " → " + data.delta.score_to +
+            " (Δ " + data.delta.score_delta + ")\\n" +
+            (data.delta.level_from||"") + " → " + (data.delta.level_to||"") + "\\n\\n";
+        }
+        (data.snapshots||[]).slice(-30).forEach(function(s){
+          msg += (s.at||"").slice(0,19) + "  ·  " + s.score + "  ·  " + (s.level||"") + "\\n";
+        });
+        if (box) { box.className = "result ok"; box.textContent = msg; }
+      } catch(e) {
+        if (box) { box.className = "result warn"; box.textContent = "Error: " + e.message; }
+      }
+    }
+    function bind(){
+      var a = document.getElementById("btn-scale-refresh");
+      var b = document.getElementById("btn-scale-history");
+      if (a && !a.__bound) { a.__bound = true; a.addEventListener("click", function(){ loadScale(true); }); }
+      if (b && !b.__bound) { b.__bound = true; b.addEventListener("click", loadHistory); }
+      if (document.getElementById("scale-now")) loadScale(true);
+    }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
+    else bind();
+    setTimeout(bind, 900);
   })();
   </script>
 

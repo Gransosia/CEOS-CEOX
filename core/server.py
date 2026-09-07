@@ -27,6 +27,7 @@ from .llm_bridge import available as llm_available, save_keys as llm_save_keys
 from .chat import ConversationalEngine
 from .long_memory import LongMemory
 from .evolve import EvolutionEngine
+from .evolution_scale import EvolutionScale
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = BASE_DIR / "web"
@@ -35,6 +36,7 @@ DATA_DIR = Path(_os.environ.get("CEOS_DATA_DIR") or _os.environ.get("DATA_DIR") 
 KNOWLEDGE_DIR = BASE_DIR / "knowledge"
 
 app = Flask(__name__, static_folder=None)
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB por petición
 
 
 def _ensure_data_dirs():
@@ -71,12 +73,19 @@ def get_designer():
     return g.designer
 
 
+def get_scale():
+    if "scale" not in g:
+        g.scale = EvolutionScale(base_path=str(DATA_DIR / "evolve"))
+    return g.scale
+
+
 def get_evolve():
     if "evolve" not in g:
         g.evolve = EvolutionEngine(
             learner=get_learner(),
             codex=get_codex(),
             identity=get_identity(),
+            library=get_library(),
             base_path=str(DATA_DIR / "evolve"),
         )
     return g.evolve
@@ -446,12 +455,56 @@ def api_evolve_run():
         fractal=bool(fractal),
         device=request.headers.get("X-Device-Id") or "evolve",
     )
+    try:
+        scale_report = get_scale().measure_and_record(
+            library=get_library(),
+            codex=get_codex(),
+            evolve_engine=get_evolve(),
+            long_memory=get_long_memory(),
+        )
+        out["evolution_scale"] = {
+            "score": scale_report.get("score"),
+            "level": scale_report.get("level"),
+        }
+    except Exception:
+        pass
     return jsonify(out)
 
 
 @app.route("/api/evolve/state")
 def api_evolve_state():
     return jsonify({"ok": True, "state": get_evolve().state(), "history": get_evolve().history(10)})
+
+
+@app.route("/api/evolve/scale")
+def api_evolve_scale():
+    """Escala actual de evolución (calcula y registra snapshot)."""
+    record = (request.args.get("record") or "1") not in ("0", "false", "no")
+    scale = get_scale()
+    deps = dict(
+        library=get_library(),
+        codex=get_codex(),
+        evolve_engine=get_evolve(),
+        long_memory=get_long_memory() if "get_long_memory" in dir() else None,
+    )
+    try:
+        deps["long_memory"] = get_long_memory()
+    except Exception:
+        deps["long_memory"] = None
+    if record:
+        report = scale.measure_and_record(**deps)
+    else:
+        report = scale.compute(**deps)
+    return jsonify(report)
+
+
+@app.route("/api/evolve/scale/history")
+def api_evolve_scale_history():
+    """Historial de evolución; query: since, until (ISO), limit."""
+    since = request.args.get("since")
+    until = request.args.get("until")
+    limit = int(request.args.get("limit") or 100)
+    return jsonify(get_scale().history(since=since, until=until, limit=limit))
 
 
 @app.route("/api/meta/storage")
@@ -572,8 +625,10 @@ def api_mentor_ingest_text():
     tags = data.get("tags") or []
     if not text:
         return jsonify({"error": "falta 'text'"}), 400
+    author = (data.get("author") or data.get("autor") or "").strip() or None
     entry = get_library().ingest_text(
-        text, title=title, tags=tags, grammar=get_grammar()
+        text, title=title, tags=tags, grammar=get_grammar(),
+        author=author, codex=get_codex(),
     )
     get_identity().log(f"Documento ingerido: {title} ({entry.get('fragments_added', 0)} frag.)", importance=2)
     return jsonify(entry), 201
@@ -582,9 +637,15 @@ def api_mentor_ingest_text():
 
 @app.route("/api/mentor/ingest/file", methods=["POST"])
 def api_mentor_ingest_file():
-    """Sube PDF/DOCX/TXT/MD y los incorpora a la biblioteca + grammar + codex."""
+    """
+    Reservorio masivo: PDF, DOCX, TXT, MD, EPUB, HTML, RTF, ODT, SRT/VTT,
+    ZIP (lote), y medios audio/vídeo (referencia + transcripción si hay sidecar).
+    Campos form: file/files, author (opcional), tags (opcional, coma-separado).
+    """
+    from werkzeug.utils import secure_filename
+    from .ingest import TEXT_SUFFIXES, MEDIA_SUFFIXES, ARCHIVE_SUFFIXES
+
     if "file" not in request.files and "files" not in request.files:
-        # también aceptar un solo file bajo otro nombre
         f = None
         for key in request.files:
             f = request.files[key]
@@ -595,41 +656,114 @@ def api_mentor_ingest_file():
     else:
         files = request.files.getlist("file") or request.files.getlist("files")
 
+    author = (request.form.get("author") or request.form.get("autor") or "").strip() or None
+    tags_raw = (request.form.get("tags") or "").strip()
+    tags = [t.strip() for t in tags_raw.split(",") if t.strip()] if tags_raw else ["upload"]
+
     lib = get_library()
     grm = get_grammar()
     mentor = get_mentor()
+    codex = get_codex()
     results = []
     upload_dir = DATA_DIR / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    for f in files:
+    allowed = TEXT_SUFFIXES | MEDIA_SUFFIXES | ARCHIVE_SUFFIXES
+    max_files = 100
+
+    for i, f in enumerate(files):
+        if i >= max_files:
+            results.append({"file": "(límite)", "status": "error", "error": f"Máximo {max_files} archivos por petición"})
+            break
         if not f or not f.filename:
             continue
         name = secure_filename(f.filename)
         suffix = Path(name).suffix.lower()
-        if suffix not in {".pdf", ".docx", ".txt", ".md", ".markdown"}:
+        if suffix not in allowed:
             results.append({"file": name, "status": "error", "error": f"Formato no soportado: {suffix}"})
             continue
         dest = upload_dir / name
-        f.save(str(dest))
         try:
-            entry = lib.ingest_file(dest, title=Path(name).stem, tags=["upload"], grammar=grm)
-            # Comprimir también al codex
-            text_path = lib.docs_dir / f"{entry['id']}.txt"
-            if text_path.exists():
-                mentor.ingest_to_codex(text_path.read_text(encoding="utf-8", errors="replace"), topic=entry["title"])
-            results.append({
-                "file": name,
-                "status": "ok",
-                "id": entry["id"],
-                "fragments": entry.get("fragments_added", 0),
-                "chunks": entry.get("chunks", 0),
-            })
-            get_identity().log(f"Archivo ingerido: {name}", importance=2)
+            f.save(str(dest))
+            if suffix in ARCHIVE_SUFFIXES:
+                batch = lib.ingest_archive(
+                    dest, grammar=grm, codex=codex, author=author, tags=tags, max_files=200,
+                )
+                results.append({
+                    "file": name,
+                    "status": "ok",
+                    "kind": "zip",
+                    "ingested": batch.get("ingested"),
+                    "errors": batch.get("errors"),
+                })
+            else:
+                entry = lib.ingest_file(
+                    dest, title=Path(name).stem, tags=tags, grammar=grm,
+                    author=author, codex=codex,
+                )
+                # también al códice vía mentor si hay texto
+                try:
+                    text_path = lib.docs_dir / entry["stored_as"]
+                    if text_path.exists() and entry.get("chars", 0) > 40:
+                        mentor.ingest_to_codex(
+                            text_path.read_text(encoding="utf-8", errors="replace")[:20000],
+                            topic=((author + " — ") if author else "") + entry["title"],
+                        )
+                except Exception:
+                    pass
+                results.append({
+                    "file": name,
+                    "status": "ok",
+                    "id": entry.get("id"),
+                    "chunks": entry.get("chunks"),
+                    "chars": entry.get("chars"),
+                    "kind": entry.get("kind"),
+                    "has_transcript": entry.get("has_transcript"),
+                    "honest_limit": entry.get("honest_limit"),
+                })
         except Exception as e:
-            results.append({"file": name, "status": "error", "error": str(e)})
+            results.append({"file": name, "status": "error", "error": str(e)[:200]})
 
-    return jsonify({"ok": True, "results": results, "stats": mentor.knowledge_stats()})
+    ok_n = sum(1 for r in results if r.get("status") == "ok")
+    return jsonify({
+        "ok": ok_n > 0,
+        "results": results,
+        "library_stats": lib.stats(),
+        "stats": get_mentor().knowledge_stats(),
+    })
+
+
+@app.route("/api/library/stats")
+def api_library_stats():
+    return jsonify({"ok": True, **get_library().stats()})
+
+
+@app.route("/api/library/search")
+def api_library_search():
+    q = request.args.get("q") or request.args.get("query") or ""
+    return jsonify({"ok": True, "docs": get_library().search_docs(q, limit=50)})
+
+
+@app.route("/api/library/study", methods=["POST"])
+def api_library_study():
+    """Relee el reservorio con un lente (estilo, temas, crítica…) e integra conclusiones."""
+    data = request.get_json(force=True) or {}
+    query = (data.get("query") or data.get("q") or data.get("tema") or "").strip()
+    lens = (data.get("lens") or data.get("enfoque") or "general").strip()
+    out = get_library().study(
+        query=query,
+        lens=lens,
+        limit_docs=int(data.get("limit_docs") or 5),
+        sample_chunks=int(data.get("sample_chunks") or 8),
+        grammar=get_grammar(),
+        codex=get_codex(),
+    )
+    # paso de evolución ligero
+    try:
+        get_codex().maybe_fractal_after_ingest(f"study:{lens}:{query[:40]}")
+    except Exception:
+        pass
+    return jsonify(out)
 
 
 @app.route("/api/mentor/ingest/seed", methods=["POST"])

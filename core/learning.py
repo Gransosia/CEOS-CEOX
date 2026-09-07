@@ -42,8 +42,10 @@ FASES_ESPIRAL = [
 
 
 class LearningDesigner:
-    def __init__(self, grammar: Grammar = None):
+    def __init__(self, grammar: Grammar = None, library=None, codex=None):
         self.grammar = grammar or Grammar()
+        self.library = library
+        self.codex = codex
 
     def diagnose_learner(self, descripcion: str, modo="habitual", regla="dependiente",
                          kappa="medio", sigma="medio", rol_declarado=None) -> dict:
@@ -107,12 +109,62 @@ class LearningDesigner:
                 ),
             })
 
+        # Reservorio: relecturas con lentes distintas ancladas a cada fase
+        reservoir = []
+        lens_by_fase = {
+            "exploracion": "temas",
+            "aprendizaje": "estilo",
+            "institucionalizacion": "practico",
+            "renovacion": "critica",
+        }
+        if self.library is not None:
+            try:
+                for i, paso in enumerate(pasos):
+                    lens = lens_by_fase.get(paso.get("fase_id"), "general")
+                    study = self.library.study(
+                        query=objetivo or learner_desc,
+                        lens=lens,
+                        limit_docs=3,
+                        sample_chunks=6,
+                        grammar=self.grammar,
+                        codex=self.codex,
+                    )
+                    paso["reservorio"] = {
+                        "lens": lens,
+                        "docs_used": study.get("docs_used"),
+                        "meta_conclusion": study.get("meta_conclusion"),
+                        "conclusions": study.get("conclusions") or [],
+                        "readings": [
+                            {
+                                "title": r.get("title"),
+                                "author": r.get("author"),
+                                "conclusion": r.get("conclusion"),
+                                "excerpt": (r.get("excerpt") or "")[:400],
+                            }
+                            for r in (study.get("readings") or [])[:3]
+                        ],
+                    }
+                    if study.get("docs_used"):
+                        paso["guia"] = (
+                            (paso.get("guia") or "")
+                            + "\n\n— Desde el reservorio ("
+                            + lens
+                            + "): "
+                            + (study.get("meta_conclusion") or "")
+                        )
+                    reservoir.append(paso.get("reservorio"))
+            except Exception as e:
+                reservoir = [{"error": str(e)[:160]}]
+
         trajectory = {
             "id": str(uuid.uuid4()),
             "learner": learner_desc,
             "objetivo": objetivo,
             "diagnostico_inicial": diagnostico,
             "pasos": pasos,
+            "reservorio_usado": any(
+                (p.get("reservorio") or {}).get("docs_used") for p in pasos
+            ),
             "created_at": datetime.now(timezone.utc).isoformat(),
             "estado": "activa",
             "progreso": 0,

@@ -978,9 +978,10 @@ document.getElementById("btn-ingest").addEventListener("click", async () => {
     return;
   }
   try {
+    const author = document.getElementById("ingest-author")?.value?.trim() || "";
     const entry = await api("/api/mentor/ingest/text", {
       method: "POST",
-      body: JSON.stringify({ title, text, tags: ["manual"] }),
+      body: JSON.stringify({ title, text, tags: ["manual"], author }),
     });
     box.classList.remove("hidden");
     box.className = "result ok";
@@ -1067,18 +1068,22 @@ document.getElementById("btn-save-keys").addEventListener("click", async () => {
 });
 
 
-document.getElementById("btn-upload").addEventListener("click", async () => {
+document.getElementById("btn-upload")?.addEventListener("click", async () => {
   const input = document.getElementById("upload-files");
   const box = document.getElementById("upload-result");
-  if (!input.files || !input.files.length) {
-    alert("Elige uno o más archivos (PDF, DOCX, TXT, MD).");
+  if (!input?.files?.length) {
+    alert("Elige uno o más archivos (PDF, EPUB, DOCX, TXT, ZIP, audio/vídeo…).");
     return;
   }
   const fd = new FormData();
-  for (const f of input.files) fd.append("file", f);
+  const author = document.getElementById("upload-author")?.value || "";
+  const tags = document.getElementById("upload-tags")?.value || "";
+  if (author) fd.append("author", author);
+  if (tags) fd.append("tags", tags);
+  for (const file of input.files) fd.append("file", file);
   box.classList.remove("hidden");
   box.className = "result";
-  box.textContent = "Subiendo e incorporando…";
+  box.textContent = "Subiendo e incorporando al reservorio… (puede tardar con muchos archivos)";
   try {
     const res = await fetch("/api/mentor/ingest/file", {
       method: "POST",
@@ -1088,15 +1093,24 @@ document.getElementById("btn-upload").addEventListener("click", async () => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || res.statusText);
     box.className = "result ok";
-    box.textContent = (data.results || [])
-      .map((r) =>
-        r.status === "ok"
-          ? `✓ ${r.file}: ${r.fragments} fragmentos, ${r.chunks} trozos`
-          : `✗ ${r.file}: ${r.error || r.status}`
-      )
-      .join("\n");
+    const lines = (data.results || []).map((r) => {
+      if (r.status === "ok" && r.kind === "zip") {
+        return `✓ ZIP ${r.file}: ${r.ingested || 0} documentos ingeridos`;
+      }
+      if (r.status === "ok") {
+        return `✓ ${r.file}: ${r.chunks || 0} trozos, ${r.chars || 0} caracteres` +
+          (r.honest_limit ? " — " + r.honest_limit : "");
+      }
+      return `✗ ${r.file}: ${r.error || r.status}`;
+    });
+    if (data.library_stats) {
+      lines.push(`\nReservorio: ${data.library_stats.docs} docs, ${data.library_stats.chunks} trozos, ${data.library_stats.media} medios`);
+      const st = document.getElementById("library-stats");
+      if (st) st.textContent = `Biblioteca: ${data.library_stats.docs} docs · ${data.library_stats.chars} caracteres · ${data.library_stats.media} medios`;
+    }
+    box.textContent = lines.join("\n");
     input.value = "";
-    refreshMaestro();
+    try { refreshMaestro(); } catch (e) {}
   } catch (e) {
     box.className = "result warn";
     box.textContent = "Error: " + e.message;

@@ -62,11 +62,13 @@ class EvolutionEngine:
         learner,
         codex,
         identity=None,
+        library=None,
         base_path: str = "data/evolve",
     ):
         self.learner = learner
         self.codex = codex
         self.identity = identity
+        self.library = library
         self.base = Path(base_path)
         self.base.mkdir(parents=True, exist_ok=True)
         self.log_file = self.base / "log.json"
@@ -142,6 +144,29 @@ class EvolutionEngine:
                 "critique_verdict": (crit or {}).get("verdict"),
             })
 
+        study_reports = []
+        if self.library is not None:
+            lenses = ["temas", "estilo", "practico", "critica"]
+            try:
+                for i in range(min(steps, len(lenses))):
+                    lens = lenses[i % len(lenses)]
+                    st = self.library.study(
+                        query=task,
+                        lens=lens,
+                        limit_docs=4,
+                        sample_chunks=6,
+                        grammar=getattr(self.learner, "grammar", None) if self.learner else None,
+                        codex=self.codex,
+                    )
+                    study_reports.append({
+                        "lens": lens,
+                        "docs_used": st.get("docs_used"),
+                        "meta": st.get("meta_conclusion"),
+                    })
+                    integrated += int(st.get("docs_used") or 0)
+            except Exception as e:
+                study_reports.append({"error": str(e)[:160]})
+
         fractal_info = None
         if fractal and self.codex is not None:
             try:
@@ -179,6 +204,7 @@ class EvolutionEngine:
             "task": task,
             "steps": steps,
             "step_reports": step_reports,
+            "study_reports": study_reports,
             "fragments_integrated": integrated,
             "critiques": critiques,
             "fractal": fractal_info,
@@ -202,6 +228,7 @@ class EvolutionEngine:
             "task": task,
             "steps": steps,
             "step_reports": step_reports,
+            "study_reports": study_reports,
             "fragments_integrated": integrated,
             "critiques": critiques,
             "fractal": fractal_info,
