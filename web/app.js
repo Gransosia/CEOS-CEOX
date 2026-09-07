@@ -1072,50 +1072,61 @@ document.getElementById("btn-upload")?.addEventListener("click", async () => {
   const input = document.getElementById("upload-files");
   const box = document.getElementById("upload-result");
   if (!input?.files?.length) {
-    alert("Elige uno o más archivos (PDF, EPUB, DOCX, TXT, ZIP, audio/vídeo…).");
+    alert("Elige uno o más archivos (PDF, EPUB, DOCX, TXT, ZIP…).");
     return;
   }
-  const fd = new FormData();
+  const files = Array.from(input.files);
   const author = document.getElementById("upload-author")?.value || "";
   const tags = document.getElementById("upload-tags")?.value || "";
-  if (author) fd.append("author", author);
-  if (tags) fd.append("tags", tags);
-  for (const file of input.files) fd.append("file", file);
   box.classList.remove("hidden");
   box.className = "result";
-  box.textContent = "Subiendo e incorporando al reservorio… (puede tardar con muchos archivos)";
-  try {
-    const res = await fetch("/api/mentor/ingest/file", {
-      method: "POST",
-      headers: { "X-Device-Id": getDeviceId() },
-      body: fd,
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || res.statusText);
-    box.className = "result ok";
-    const lines = (data.results || []).map((r) => {
-      if (r.status === "ok" && r.kind === "zip") {
-        return `✓ ZIP ${r.file}: ${r.ingested || 0} documentos ingeridos`;
+  const lines = [];
+  let okN = 0;
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    box.textContent = `Subiendo ${i + 1}/${files.length}: ${file.name}…
+` + lines.join("
+");
+    const fd = new FormData();
+    if (author) fd.append("author", author);
+    if (tags) fd.append("tags", tags);
+    fd.append("light", "1");
+    fd.append("file", file, file.name);
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 180000);
+      const res = await fetch("/api/mentor/ingest/file", {
+        method: "POST",
+        headers: { "X-Device-Id": getDeviceId() },
+        body: fd,
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      const data = await res.json().catch(() => ({}));
+      const r = (data.results && data.results[0]) || {};
+      if (res.ok && (data.ok || r.status === "ok")) {
+        okN++;
+        if (r.kind === "zip") lines.push(`✓ ZIP ${file.name}: ${r.ingested || 0} docs`);
+        else lines.push(`✓ ${file.name}: ${r.chunks || 0} trozos, ${r.chars || 0} caracteres`);
+        if (data.library_stats) {
+          const st = document.getElementById("library-stats");
+          if (st) st.textContent = `Biblioteca: ${data.library_stats.docs} docs · ${data.library_stats.chars} caracteres · ${data.library_stats.media} medios`;
+        }
+      } else {
+        lines.push(`✗ ${file.name}: ${r.error || data.error || res.statusText || "error"}`);
       }
-      if (r.status === "ok") {
-        return `✓ ${r.file}: ${r.chunks || 0} trozos, ${r.chars || 0} caracteres` +
-          (r.honest_limit ? " — " + r.honest_limit : "");
-      }
-      return `✗ ${r.file}: ${r.error || r.status}`;
-    });
-    if (data.library_stats) {
-      lines.push(`\nReservorio: ${data.library_stats.docs} docs, ${data.library_stats.chunks} trozos, ${data.library_stats.media} medios`);
-      const st = document.getElementById("library-stats");
-      if (st) st.textContent = `Biblioteca: ${data.library_stats.docs} docs · ${data.library_stats.chars} caracteres · ${data.library_stats.media} medios`;
+    } catch (e) {
+      lines.push(`✗ ${file.name}: ${e.name === "AbortError" ? "tiempo agotado" : e.message}`);
     }
-    box.textContent = lines.join("\n");
-    input.value = "";
-    try { refreshMaestro(); } catch (e) {}
-  } catch (e) {
-    box.className = "result warn";
-    box.textContent = "Error: " + e.message;
   }
+  box.className = okN > 0 ? "result ok" : "result warn";
+  box.textContent = `Completado: ${okN}/${files.length} archivos cargados.
+` + lines.join("
+");
+  if (okN > 0) input.value = "";
+  try { refreshMaestro(); } catch (e) {}
 });
+
 
 document.getElementById("btn-save-user").addEventListener("click", async () => {
   const name = document.getElementById("user-name").value.trim();

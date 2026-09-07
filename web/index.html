@@ -1456,6 +1456,66 @@
   })();
   </script>
 
+  
+  <script>
+  window.ceosUploadReservoir = async function () {
+    var input = document.getElementById("upload-files");
+    var box = document.getElementById("upload-result");
+    if (!input || !input.files || !input.files.length) {
+      alert("Elige uno o más archivos");
+      return;
+    }
+    var files = Array.from(input.files);
+    var author = (document.getElementById("upload-author") || {}).value || "";
+    var tags = (document.getElementById("upload-tags") || {}).value || "";
+    if (box) { box.classList.remove("hidden"); box.className = "result"; }
+    var lines = [];
+    var okN = 0;
+    for (var i = 0; i < files.length; i++) {
+      var file = files[i];
+      if (box) box.textContent = "Subiendo " + (i + 1) + "/" + files.length + ": " + file.name + "…\n" + lines.join("\n");
+      var fd = new FormData();
+      if (author) fd.append("author", author);
+      if (tags) fd.append("tags", tags);
+      fd.append("light", "1");
+      fd.append("file", file, file.name);
+      try {
+        var res = await fetch("/api/mentor/ingest/file", { method: "POST", body: fd });
+        var data = await res.json().catch(function () { return {}; });
+        var r = (data.results && data.results[0]) || {};
+        if (res.ok && (data.ok || r.status === "ok")) {
+          okN++;
+          lines.push("✓ " + file.name + " (" + (r.chunks || 0) + " trozos)");
+        } else {
+          lines.push("✗ " + file.name + ": " + (r.error || data.error || res.status));
+        }
+      } catch (e) {
+        lines.push("✗ " + file.name + ": " + e.message);
+      }
+    }
+    if (box) {
+      box.className = okN > 0 ? "result ok" : "result warn";
+      box.textContent = "Completado: " + okN + "/" + files.length + "\n" + lines.join("\n");
+    }
+    if (okN > 0) input.value = "";
+  };
+  (function () {
+    function bind() {
+      var btn = document.getElementById("btn-upload");
+      if (btn && !btn.__ceosUpload) {
+        btn.__ceosUpload = true;
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          window.ceosUploadReservoir();
+        });
+      }
+    }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
+    else bind();
+    setTimeout(bind, 500);
+  })();
+  </script>
+
   <script src="app.js"></script>
 </body>
 </html>

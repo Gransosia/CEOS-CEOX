@@ -8,6 +8,7 @@ Servidor local multi-dispositivo del Motor CRONOS-Espiral v5.
 import socket
 import uuid
 from pathlib import Path
+import re
 from datetime import datetime, timezone
 from flask import Flask, request, jsonify, send_from_directory, g
 from werkzeug.utils import secure_filename
@@ -36,7 +37,7 @@ DATA_DIR = Path(_os.environ.get("CEOS_DATA_DIR") or _os.environ.get("DATA_DIR") 
 KNOWLEDGE_DIR = BASE_DIR / "knowledge"
 
 app = Flask(__name__, static_folder=None)
-app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB por petición
+app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200 MB por petición (lotes)
 
 
 def _ensure_data_dirs():
@@ -638,81 +639,94 @@ def api_mentor_ingest_text():
 @app.route("/api/mentor/ingest/file", methods=["POST"])
 def api_mentor_ingest_file():
     """
-    Reservorio masivo: PDF, DOCX, TXT, MD, EPUB, HTML, RTF, ODT, SRT/VTT,
-    ZIP (lote), y medios audio/vídeo (referencia + transcripción si hay sidecar).
-    Campos form: file/files, author (opcional), tags (opcional, coma-separado).
+    Reservorio masivo. Acepta muchos archivos en una petición (campo file repetido)
+    o de uno en uno. Formatos texto + ZIP + medios.
     """
-    from werkzeug.utils import secure_filename
+    import uuid as _uuid
     from .ingest import TEXT_SUFFIXES, MEDIA_SUFFIXES, ARCHIVE_SUFFIXES
 
-    if "file" not in request.files and "files" not in request.files:
-        f = None
-        for key in request.files:
-            f = request.files[key]
-            break
-        if f is None:
-            return jsonify({"error": "No se envió ningún archivo (campo file)"}), 400
-        files = [f]
-    else:
-        files = request.files.getlist("file") or request.files.getlist("files")
+    files = []
+    if request.files:
+        files = request.files.getlist("file")
+        if not files:
+            files = request.files.getlist("files")
+        if not files:
+            files = list(request.files.values())
+
+    if not files:
+        return jsonify({"ok": False, "error": "No se envió ningún archivo", "results": []}), 400
 
     author = (request.form.get("author") or request.form.get("autor") or "").strip() or None
     tags_raw = (request.form.get("tags") or "").strip()
     tags = [t.strip() for t in tags_raw.split(",") if t.strip()] if tags_raw else ["upload"]
+    light = (request.form.get("light") or "1") not in ("0", "false", "no")  # por defecto ligero=rápido
 
     lib = get_library()
     grm = get_grammar()
-    mentor = get_mentor()
-    codex = get_codex()
     results = []
     upload_dir = DATA_DIR / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
-
     allowed = TEXT_SUFFIXES | MEDIA_SUFFIXES | ARCHIVE_SUFFIXES
-    max_files = 100
+    max_files = 150
 
     for i, f in enumerate(files):
         if i >= max_files:
-            results.append({"file": "(límite)", "status": "error", "error": f"Máximo {max_files} archivos por petición"})
+            results.append({"file": "(límite)", "status": "error", "error": f"Máximo {max_files} archivos"})
             break
-        if not f or not f.filename:
+        original = (getattr(f, "filename", None) or "").strip()
+        if not original:
             continue
-        name = secure_filename(f.filename)
-        suffix = Path(name).suffix.lower()
-        if suffix not in allowed:
-            results.append({"file": name, "status": "error", "error": f"Formato no soportado: {suffix}"})
+        suffix = Path(original).suffix.lower()
+        if not suffix or suffix not in allowed:
+            results.append({"file": original, "status": "error", "error": f"Formato no soportado: {suffix or '(sin extensión)'}"})
             continue
+        # nombre seguro sin perder extensión (evita vacío con tildes/espacios raros)
+        stem = Path(original).stem
+        safe_stem = re.sub(r"[^\w\-]+", "_", stem, flags=re.U)[:80] or "doc"
+        name = f"{safe_stem}_{_uuid.uuid4().hex[:8]}{suffix}"
         dest = upload_dir / name
         try:
             f.save(str(dest))
+            if not dest.exists() or dest.stat().st_size == 0:
+                results.append({"file": original, "status": "error", "error": "Archivo vacío o no guardado"})
+                continue
             if suffix in ARCHIVE_SUFFIXES:
                 batch = lib.ingest_archive(
-                    dest, grammar=grm, codex=codex, author=author, tags=tags, max_files=200,
+                    dest,
+                    grammar=grm,
+                    codex=None if light else get_codex(),
+                    author=author,
+                    tags=tags,
+                    max_files=200,
                 )
                 results.append({
-                    "file": name,
+                    "file": original,
                     "status": "ok",
                     "kind": "zip",
                     "ingested": batch.get("ingested"),
-                    "errors": batch.get("errors"),
+                    "errors": (batch.get("errors") or [])[:10],
                 })
             else:
                 entry = lib.ingest_file(
-                    dest, title=Path(name).stem, tags=tags, grammar=grm,
-                    author=author, codex=codex,
+                    dest,
+                    title=Path(original).stem,
+                    tags=tags,
+                    grammar=grm,
+                    author=author,
+                    codex=None if light else get_codex(),
                 )
-                # también al códice vía mentor si hay texto
-                try:
-                    text_path = lib.docs_dir / entry["stored_as"]
-                    if text_path.exists() and entry.get("chars", 0) > 40:
-                        mentor.ingest_to_codex(
-                            text_path.read_text(encoding="utf-8", errors="replace")[:20000],
-                            topic=((author + " — ") if author else "") + entry["title"],
-                        )
-                except Exception:
-                    pass
+                if not light and entry.get("chars", 0) > 40:
+                    try:
+                        text_path = lib.docs_dir / entry["stored_as"]
+                        if text_path.exists():
+                            get_mentor().ingest_to_codex(
+                                text_path.read_text(encoding="utf-8", errors="replace")[:12000],
+                                topic=((author + " — ") if author else "") + entry["title"],
+                            )
+                    except Exception:
+                        pass
                 results.append({
-                    "file": name,
+                    "file": original,
                     "status": "ok",
                     "id": entry.get("id"),
                     "chunks": entry.get("chunks"),
@@ -722,48 +736,23 @@ def api_mentor_ingest_file():
                     "honest_limit": entry.get("honest_limit"),
                 })
         except Exception as e:
-            results.append({"file": name, "status": "error", "error": str(e)[:200]})
+            results.append({"file": original, "status": "error", "error": str(e)[:240]})
 
     ok_n = sum(1 for r in results if r.get("status") == "ok")
-    return jsonify({
-        "ok": ok_n > 0,
-        "results": results,
-        "library_stats": lib.stats(),
-        "stats": get_mentor().knowledge_stats(),
-    })
-
-
-@app.route("/api/library/stats")
-def api_library_stats():
-    return jsonify({"ok": True, **get_library().stats()})
-
-
-@app.route("/api/library/search")
-def api_library_search():
-    q = request.args.get("q") or request.args.get("query") or ""
-    return jsonify({"ok": True, "docs": get_library().search_docs(q, limit=50)})
-
-
-@app.route("/api/library/study", methods=["POST"])
-def api_library_study():
-    """Relee el reservorio con un lente (estilo, temas, crítica…) e integra conclusiones."""
-    data = request.get_json(force=True) or {}
-    query = (data.get("query") or data.get("q") or data.get("tema") or "").strip()
-    lens = (data.get("lens") or data.get("enfoque") or "general").strip()
-    out = get_library().study(
-        query=query,
-        lens=lens,
-        limit_docs=int(data.get("limit_docs") or 5),
-        sample_chunks=int(data.get("sample_chunks") or 8),
-        grammar=get_grammar(),
-        codex=get_codex(),
-    )
-    # paso de evolución ligero
+    # snapshot ligero de escala opcional
     try:
-        get_codex().maybe_fractal_after_ingest(f"study:{lens}:{query[:40]}")
+        get_scale().measure_and_record(
+            library=lib, codex=get_codex(), evolve_engine=get_evolve(), long_memory=None,
+        )
     except Exception:
         pass
-    return jsonify(out)
+    return jsonify({
+        "ok": ok_n > 0,
+        "uploaded": ok_n,
+        "total": len(results),
+        "results": results,
+        "library_stats": lib.stats(),
+    }), (200 if ok_n > 0 else 400)
 
 
 @app.route("/api/mentor/ingest/seed", methods=["POST"])
