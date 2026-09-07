@@ -26,10 +26,12 @@ from .user_profile import UserProfile
 from .llm_bridge import available as llm_available, save_keys as llm_save_keys
 from .chat import ConversationalEngine
 from .long_memory import LongMemory
+from .evolve import EvolutionEngine
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = BASE_DIR / "web"
-DATA_DIR = BASE_DIR / "data"
+import os as _os
+DATA_DIR = Path(_os.environ.get("CEOS_DATA_DIR") or _os.environ.get("DATA_DIR") or (BASE_DIR / "data"))
 KNOWLEDGE_DIR = BASE_DIR / "knowledge"
 
 app = Flask(__name__, static_folder=None)
@@ -38,7 +40,7 @@ app = Flask(__name__, static_folder=None)
 def _ensure_data_dirs():
     """Crea data/ y subcarpetas (necesario cuando arranca gunicorn y no se llama main())."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    for sub in ("identity", "memory", "grammar", "library", "mentor", "codex", "user", "uploads", "chat", "long_memory"):
+    for sub in ("identity", "memory", "grammar", "library", "mentor", "codex", "user", "uploads", "chat", "long_memory", "evolve"):
         (DATA_DIR / sub).mkdir(exist_ok=True)
 
 
@@ -67,6 +69,17 @@ def get_designer():
     if "designer" not in g:
         g.designer = LearningDesigner(grammar=get_grammar())
     return g.designer
+
+
+def get_evolve():
+    if "evolve" not in g:
+        g.evolve = EvolutionEngine(
+            learner=get_learner(),
+            codex=get_codex(),
+            identity=get_identity(),
+            base_path=str(DATA_DIR / "evolve"),
+        )
+    return g.evolve
 
 
 def get_learner():
@@ -400,6 +413,57 @@ def api_research_history():
     return jsonify(get_learner().history())
 
 
+@app.route("/api/research/critique", methods=["POST"])
+def api_research_critique():
+    """Critica un informe o re-critica el último aprendizaje de un tema."""
+    from .critique import critique_research
+    from .research import research_topic
+    data = request.get_json(force=True) or {}
+    topic = (data.get("topic") or data.get("tema") or "").strip()
+    report = data.get("report")
+    if not report and topic:
+        report = research_topic(topic, focus=data.get("focus"))
+    if not report:
+        return jsonify({"error": "envía topic o report"}), 400
+    out = critique_research(report, codex=get_codex())
+    return jsonify(out)
+
+
+@app.route("/api/evolve/run", methods=["POST"])
+def api_evolve_run():
+    """Asigna una tarea: CEOS investiga, integra, critica y adapta el códice solo."""
+    data = request.get_json(force=True) or {}
+    task = (data.get("task") or data.get("tarea") or data.get("goal") or "").strip()
+    if not task:
+        return jsonify({"error": "falta task/tarea"}), 400
+    steps = data.get("steps", 3)
+    learn = data.get("learn", True)
+    fractal = data.get("fractal", True)
+    out = get_evolve().run_task(
+        task,
+        steps=steps,
+        learn=bool(learn),
+        fractal=bool(fractal),
+        device=request.headers.get("X-Device-Id") or "evolve",
+    )
+    return jsonify(out)
+
+
+@app.route("/api/evolve/state")
+def api_evolve_state():
+    return jsonify({"ok": True, "state": get_evolve().state(), "history": get_evolve().history(10)})
+
+
+@app.route("/api/meta/storage")
+def api_meta_storage():
+    """Indica dónde se guarda la memoria (útil con volumen persistente)."""
+    return jsonify({
+        "data_dir": str(DATA_DIR),
+        "persistent_hint": "En Render Free el disco es efímero. Monta un Persistent Disk en /var/data y define CEOS_DATA_DIR=/var/data",
+        "exists": DATA_DIR.exists(),
+    })
+
+
 # ---------- Voz ----------
 @app.route("/api/voice/status")
 def api_voice_status():
@@ -664,6 +728,23 @@ def api_codex_fractal_cycle():
     return jsonify(result)
 
 
+@app.route("/api/codex/retract", methods=["POST"])
+def api_codex_retract():
+    """Marca un texto o cristal como falso; degrada y guarda anti-conocimiento."""
+    data = request.get_json(force=True) or {}
+    text = (data.get("text") or data.get("id") or data.get("crystal_id") or "").strip()
+    if not text:
+        return jsonify({"error": "falta text o id"}), 400
+    reason = (data.get("reason") or data.get("motivo") or "falso").strip()
+    topic = (data.get("topic") or data.get("tema") or "").strip() or None
+    out = get_codex().retract_false(text, reason=reason, topic=topic)
+    try:
+        get_identity().log(f"Retractado en códice: {text[:60]}… ({reason})", importance=2)
+    except Exception:
+        pass
+    return jsonify(out)
+
+
 @app.route("/api/codex/expand", methods=["POST"])
 def api_codex_expand():
     data = request.get_json(force=True) or {}
@@ -869,6 +950,9 @@ def api_lang_turn():
     history = data.get("history") or []
     native = (data.get("native_lang") or "es").strip()
     long_mode = bool(data.get("long"))
+    translate_es = data.get("translate_es")
+    if translate_es is None:
+        translate_es = True
     result = reply_turn(
         role_id=role_id,
         target_lang=target,
@@ -876,6 +960,7 @@ def api_lang_turn():
         history=history,
         native_lang=native,
         long=long_mode,
+        translate_es=bool(translate_es),
         codex=get_codex(),
         long_memory=get_chat().long_memory,
     )

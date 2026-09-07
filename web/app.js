@@ -1482,11 +1482,15 @@ async function sendLangTurn() {
         history: langState.history,
         native_lang: "es",
         long,
+        translate_es: !!document.getElementById("lang-translate-es")?.checked,
       }),
     });
     if (res.partner_message) {
       langAppend("partner", res.partner_message);
       langState.history.push({ role: "partner", content: res.partner_message });
+    }
+    if (res.partner_message_es && res.partner_message_es !== res.partner_message) {
+      langAppend("partner", "🇪🇸 " + res.partner_message_es);
     }
     const corr = document.getElementById("lang-corrections");
     if (res.corrections && res.corrections.length) {

@@ -23,7 +23,7 @@ RUN set -e; \
         cp -a "$BASE"/. /app/; \
       fi; \
     fi; \
-    mkdir -p /app/data/identity /app/data/memory /app/data/grammar /app/data/library \
+    mkdir -p /var/data /app/data/identity /app/data/memory /app/data/grammar /app/data/library \
       /app/data/mentor /app/data/codex /app/data/user /app/data/uploads \
       /app/data/chat /app/data/long_memory /app/data/coaching; \
     ls -la /app; \

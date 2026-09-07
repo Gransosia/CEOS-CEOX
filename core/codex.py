@@ -159,6 +159,75 @@ class Codex:
     def get_map(self, topic: str) -> Optional[dict]:
         return self._load(self.maps_file).get(topic.strip().lower())
 
+
+    def retract_false(self, text_or_id: str, reason: str = "", topic: Optional[str] = None) -> dict:
+        """
+        Marca conocimiento como falso/degradado.
+        - Si es id de cristal: lo degrada (no borra del todo: deja rastro).
+        - Si es texto: busca cristales solapados y los degrada; guarda anti-cristal.
+        """
+        crystals = self._load(self.crystals_file)
+        reason = (reason or "marcado falso por el usuario").strip()
+        target = (text_or_id or "").strip()
+        degraded = []
+        if target in crystals:
+            c = crystals[target]
+            c["kind"] = "retracted"
+            c["meta"] = dict(c.get("meta") or {})
+            c["meta"]["retracted"] = True
+            c["meta"]["retract_reason"] = reason
+            c["meta"]["retracted_at"] = _now()
+            c["text"] = f"[RETRACTADO] {c.get('text','')}"
+            crystals[target] = c
+            degraded.append(target)
+        else:
+            # solapamiento por tokens
+            from .critique import _tokens
+            qt = _tokens(target)
+            for cid, c in list(crystals.items()):
+                if c.get("meta", {}).get("retracted"):
+                    continue
+                tt = _tokens(c.get("text") or "")
+                if len(qt & tt) >= max(3, len(qt) // 3):
+                    c = dict(c)
+                    c["kind"] = "retracted"
+                    c["meta"] = dict(c.get("meta") or {})
+                    c["meta"]["retracted"] = True
+                    c["meta"]["retract_reason"] = reason
+                    c["meta"]["retracted_at"] = _now()
+                    c["text"] = f"[RETRACTADO] {c.get('text','')}"
+                    crystals[cid] = c
+                    degraded.append(cid)
+        # anti-cristal: lo que NO debemos afirmar
+        anti = f"NO AFIRMAR (falso): {target[:300]} — Motivo: {reason}"
+        anti_id = _uid(anti)
+        crystals[anti_id] = {
+            "id": anti_id,
+            "kind": "falsehood",
+            "text": anti,
+            "chars": len(anti),
+            "meta": {"topic": (topic or "")[:80], "retracted": True, "reason": reason},
+            "created_at": _now(),
+        }
+        self._save(self.crystals_file, crystals)
+        if topic:
+            try:
+                self.compress_text(anti, topic=topic[:80], max_chunks=3)
+            except Exception:
+                pass
+        return {
+            "ok": True,
+            "degraded_ids": degraded,
+            "falsehood_id": anti_id,
+            "reason": reason,
+            "topic": topic,
+        }
+
+    def active_crystals(self) -> dict:
+        """Cristales no retractados."""
+        crystals = self._load(self.crystals_file)
+        return {k: v for k, v in crystals.items() if not (v.get("meta") or {}).get("retracted") and v.get("kind") != "retracted"}
+
     # ----- Compresión de un texto largo en codex -----
     def compress_text(self, text: str, topic: str, max_chunks: int = 40) -> dict:
         """

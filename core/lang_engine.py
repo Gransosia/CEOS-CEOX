@@ -48,6 +48,41 @@ def start_session(role_id: str, target_lang: str = "en") -> dict:
     }
 
 
+
+def _to_castellano(text: str, context: str = "") -> str:
+    """Traduce al castellano el mensaje del compañero (LLM si hay clave; si no, nota honesta)."""
+    text = (text or "").strip()
+    if not text:
+        return ""
+    status = llm_available()
+    if status.get("available"):
+        try:
+            r = chat_completion(
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Traduce al castellano de España el siguiente texto. "
+                            "Solo la traducción, sin comillas ni comentarios. "
+                            "Mantén el tono conversacional."
+                        ),
+                    },
+                    {"role": "user", "content": text[:1500]},
+                ],
+                max_tokens=400,
+            )
+            out = (r or "").strip()
+            if out:
+                return out
+        except Exception:
+            pass
+    # Sin API: glosa mínima honesta (no inventar traducción palabra a palabra falsa)
+    return (
+        "(Traducción automática no disponible sin API gratuita configurada. "
+        "Texto original arriba. Activa Groq/Gemini en Maestro para traducir al castellano.)"
+    )
+
+
 def reply_turn(
     *,
     role_id: str,
@@ -56,6 +91,7 @@ def reply_turn(
     history: list[dict],
     native_lang: str = "es",
     long: bool = False,
+    translate_es: bool = True,
     codex=None,
     long_memory=None,
 ) -> dict:
@@ -140,15 +176,23 @@ def reply_turn(
         if tl == "en" and re.search(r"[áéíóúñ¿¡]", user_text):
             partner = "Try saying that in English — I can help. " + partner
 
+    partner_es = ""
+    if translate_es and tl != "es" and partner:
+        partner_es = _to_castellano(partner)
+    elif translate_es and tl == "es":
+        partner_es = partner
+
     return {
         "ok": True,
         "partner_message": partner,
+        "partner_message_es": partner_es,
         "corrections": corrections,
         "chunks": chunks,
         "suggestions": (role.get("suggestions") or {}).get(tl) or [],
         "engine": engine,
         "role_id": role_id,
         "target_lang": tl,
+        "translate_es": bool(translate_es),
     }
 
 

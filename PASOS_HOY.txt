@@ -1,6 +1,34 @@
-CEOS-CEOX HOY
+CEOS-CEOX — entrega perfilada
+==============================
 
-1. GitHub: repo limpio. Sube el CONTENIDO de este zip (Dockerfile, core/, web/, wsgi.py en la RAIZ).
-2. Render Docker: Language=Docker, Root Directory VACIO, Free, Deploy.
-3. Si falla, Render Python: Build=pip install -r requirements.txt | Start=gunicorn --bind 0.0.0.0:$PORT wsgi:app
-4. Local: INICIAR_CEOS.bat -> http://127.0.0.1:5000
+1) Sube a GitHub (raíz del repo) el contenido de este zip:
+   - core/  (completo, incluye critique.py)
+   - web/   (completo)
+   - wsgi.py, Dockerfile, requirements.txt, render.yaml
+
+2) Render → Manual Deploy (verde)
+
+3) Ctrl+F5 en https://tu-servicio.onrender.com
+
+Comprobaciones rápidas
+----------------------
+- /health → {"ok": true}
+- Chat: escribe y recibe respuesta (URL no debe cambiar a ?message=)
+- Investigar: "astroteología" → informe en castellano, NO astrobiología
+- Al final: Crítica automática (veredicto)
+- Corregir códice: marca un texto como falso
+- Idiomas: casilla "Traducir a castellano"
+- Voz: solo texto por defecto; "Detener voz"; Hablar con CEOS
+
+Persistencia
+------------
+- Free Render: disco efímero → usa Sync export/import
+- De pago: Persistent Disk en /var/data y CEOS_DATA_DIR=/var/data
+
+Batería de pruebas (local, sin Flask en CI)
+-------------------------------------------
+PASS research_astroteologia_relevant_es
+PASS critique_report
+PASS codex_compress_and_retract
+PASS lang_turn_translate_flag
+PASS web_assets

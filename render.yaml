@@ -4,3 +4,8 @@ services:
     runtime: docker
     plan: free
     healthCheckPath: /health
+    envVars:
+      - key: CEOS_DATA_DIR
+        value: /var/data
+    # Persistent Disk: en plan de pago, crea disco y monta en /var/data
+    # En Free el disco es efímero: usa pestaña Sync (export/import) como backup

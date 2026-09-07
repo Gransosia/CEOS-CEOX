@@ -622,6 +622,17 @@ class TopicLearner:
         report["learned"] = True
         report["codex"] = codex_info
         report["long_memory"] = mem_info
+
+        # Crítica automática + reescritura/reconciliación del códice
+        try:
+            from .critique import critique_research
+            critique = critique_research(report, codex=self.codex)
+            report["critique"] = critique
+            if critique.get("codex") and not codex_info:
+                report["codex"] = critique.get("codex")
+        except Exception as e:
+            report["critique"] = {"ok": False, "error": str(e)[:160]}
+
         return report
 
     def history(self, limit: int = 20) -> list:

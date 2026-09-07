@@ -158,6 +158,7 @@
             <div id="lang-suggestions" class="chat-suggestions"></div>
             <div class="chat-compose">
               <button type="button" id="lang-mic" class="icon-btn" title="Dictar">🎤</button>
+              <label class="chat-opt"><input type="checkbox" id="lang-translate-es" checked /> Traducir respuesta a castellano</label>
               <textarea id="lang-input" rows="2" placeholder="Escribe o dicta en el idioma objetivo…"></textarea>
               <button type="button" id="lang-send" class="primary">Enviar</button>
             </div>
@@ -422,6 +423,22 @@
           </label>
           <button type="button" class="primary" id="btn-research">Investigar</button>
           <div id="research-result" class="result hidden"></div>
+          <div class="card" style="margin-top:12px">
+            <h3>Evolución autónoma por tarea</h3>
+            <p class="muted">Das una meta. CEOS investiga subtemas, integra, critica y re-cifra el códice (no reescribe su código fuente).</p>
+            <textarea id="evolve-task" rows="2" placeholder="Ej: Dominar astroteología frente a astrobiología; o: mejorar feedback E-C-A-M en coaching"></textarea>
+            <label class="chat-opt">Pasos <input type="number" id="evolve-steps" value="3" min="1" max="6" style="width:4rem;margin-left:8px" /></label>
+            <button type="button" class="primary" id="btn-evolve-run">Ejecutar evolución</button>
+            <div id="evolve-result" class="result hidden"></div>
+          </div>
+          <div class="card" style="margin-top:12px">
+            <h3>Corregir el códice</h3>
+            <p class="muted">Si CEOS afirmó algo falso, márcalo. Se degrada en memoria y se guarda como «no afirmar».</p>
+            <textarea id="retract-text" rows="2" placeholder="Texto falso o fragmento a retirar…"></textarea>
+            <input type="text" id="retract-reason" placeholder="Motivo (ej: confunde con astrobiología)" />
+            <button type="button" class="primary" id="btn-retract-false">Marcar como falso</button>
+            <div id="retract-result" class="result hidden"></div>
+          </div>
         </div>
         <div class="card">
           <h2>Voz (femenina preferida)</h2>
@@ -496,6 +513,7 @@
             <li><strong>Detener voz:</strong> botón «⏹ Detener voz», tecla <kbd>Esc</kbd>, o di «Para» / «Silencio».</li>
             <li><strong>Cambiar modalidad:</strong> pestañas arriba en cualquier momento, o di «Abre coaching», «Modo maestro»…</li>
             <li><strong>Hablar:</strong> «Investiga…», una pregunta, o un comando de menú.</li>
+            <li><strong>Infinitud discreta (arroz y ajedrez):</strong> pocas reglas + fragmentos que se combinan y re-cifran en el códice (generaciones G0→G1…) producen variedad creciente sin GPU. Lo pequeño, bien combinado, rinde de forma casi ilimitada.</li>
           </ul>
         </div>
       </section>
@@ -839,6 +857,18 @@
           });
         } else {
           msg += "\n(Sin fuentes externas en este intento; revisa core/research.py desplegado.)\n";
+        }
+        if (report.critique) {
+          var c = report.critique;
+          msg += "\n---\nCrítica automática: veredicto «" + (c.verdict || "?") + "»\n";
+          (c.issues || []).forEach(function (x) { msg += "· " + x + "\n"; });
+          (c.strengths || []).forEach(function (x) { msg += "+ " + x + "\n"; });
+          if (c.contradictions && c.contradictions.length) {
+            msg += "Contradicciones/tensiones: " + c.contradictions.length + "\n";
+          }
+          if (c.actions && c.actions.length) {
+            msg += "Acciones códice: " + c.actions.join(", ") + "\n";
+          }
         }
         if (box) {
           box.className = "result ok";
@@ -1185,6 +1215,87 @@
     } else {
       bind();
     }
+  })();
+  </script>
+
+  
+  <script>
+  (function () {
+    function bindRetract() {
+      var btn = document.getElementById("btn-retract-false");
+      if (!btn || btn.__bound) return;
+      btn.__bound = true;
+      btn.addEventListener("click", async function () {
+        var text = (document.getElementById("retract-text") || {}).value || "";
+        text = text.trim();
+        var reason = ((document.getElementById("retract-reason") || {}).value || "").trim() || "falso";
+        var topic = ((document.getElementById("research-topic") || {}).value || "").trim();
+        var box = document.getElementById("retract-result");
+        if (!text) { alert("Escribe el fragmento falso"); return; }
+        if (box) { box.classList.remove("hidden"); box.className = "result"; box.textContent = "Actualizando códice…"; }
+        try {
+          var res = await fetch("/api/codex/retract", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: text, reason: reason, topic: topic || undefined }),
+          });
+          var data = await res.json();
+          if (box) {
+            box.className = "result ok";
+            box.textContent = "Códice actualizado. Degradados: " + (data.degraded_ids || []).length +
+              " · Anti-cristal: " + (data.falsehood_id || "") + " · " + (data.reason || "");
+          }
+        } catch (e) {
+          if (box) { box.className = "result warn"; box.textContent = "Error: " + e.message; }
+        }
+      });
+    }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bindRetract);
+    else bindRetract();
+    setTimeout(bindRetract, 600);
+  })();
+  </script>
+
+  
+  <script>
+  (function(){
+    function bindEvolve(){
+      var btn = document.getElementById("btn-evolve-run");
+      if (!btn || btn.__bound) return;
+      btn.__bound = true;
+      btn.addEventListener("click", async function(){
+        var task = ((document.getElementById("evolve-task")||{}).value||"").trim();
+        var steps = parseInt(((document.getElementById("evolve-steps")||{}).value)||"3", 10);
+        var box = document.getElementById("evolve-result");
+        if (!task) { alert("Escribe una tarea/meta"); return; }
+        if (box) { box.classList.remove("hidden"); box.className="result"; box.textContent="Evolucionando… varios pasos de investigación; espera."; }
+        try {
+          var res = await fetch("/api/evolve/run", {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({task: task, steps: steps, learn: true, fractal: true})
+          });
+          var data = await res.json();
+          if (!res.ok || data.ok === false) {
+            if (box) { box.className="result warn"; box.textContent = data.error || "Error"; }
+            return;
+          }
+          var msg = (data.message||"") + "\\n\\n";
+          msg += "Fragmentos integrados: " + (data.fragments_integrated||0) + "\\n";
+          msg += "Política interna: " + JSON.stringify(data.policy||{}) + "\\n\\n";
+          (data.step_reports||[]).forEach(function(s){
+            msg += "Paso " + s.step + ": " + s.topic + " → fuentes " + s.sources +
+              ", frags " + s.fragments_added + ", crítica " + (s.critique_verdict||"—") + "\\n";
+          });
+          if (box) { box.className="result ok"; box.textContent = msg; }
+        } catch(e) {
+          if (box) { box.className="result warn"; box.textContent="Error: "+e.message; }
+        }
+      });
+    }
+    if (document.readyState==="loading") document.addEventListener("DOMContentLoaded", bindEvolve);
+    else bindEvolve();
+    setTimeout(bindEvolve, 700);
   })();
   </script>
 
