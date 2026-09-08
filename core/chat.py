@@ -108,13 +108,14 @@ class ChatSession:
 class ConversationalEngine:
     """Motor de diálogo fluido de CEOS."""
 
-    def __init__(self, mentor, codex, memory, user_profile, identity, base_path: str, long_memory=None):
+    def __init__(self, mentor, codex, memory, user_profile, identity, base_path: str, long_memory=None, library=None):
         self.mentor = mentor
         self.codex = codex
         self.memory = memory
         self.user = user_profile
         self.identity = identity
         self.long_memory = long_memory
+        self.library = library
         self.store = ChatSession(base_path)
 
     def new_session_id(self) -> str:
@@ -379,18 +380,107 @@ class ConversationalEngine:
         ))
 
     def _wants_web(self, user_text: str, web_flag: bool = False) -> bool:
-        """Siempre busca en internet salvo opt-out o saludo corto."""
+        """
+        Busca en internet solo si tiene sentido.
+        NO busca en saludos, meta-preguntas sobre el propio aprendizaje, ni charla cotidiana.
+        """
         text = (user_text or "").strip()
         low = text.lower()
-        if any(x in low for x in ("sin internet", "no busques", "no buscar", "solo corpus", "solo local", "offline")):
-            return False
         if web_flag is False:
             return False
-        if len(text) < 10 and re.match(
-            r"^(hola|hi|hey|buenas|buenos d[ií]as|ok|vale|gracias)[!?.]*$", low
+        if any(x in low for x in ("sin internet", "no busques", "no buscar", "solo corpus", "solo local", "offline")):
+            return False
+        # Meta / conversación sobre el propio sistema → local
+        if self._is_self_reflection(low):
+            return False
+        if re.match(
+            r"^(hola|hi|hey|buenas|buenos d[ií]as|buenas tardes|buenas noches|ok|vale|gracias|adi[oó]s|hasta luego)[!?.\s]*$",
+            low,
         ):
             return False
-        return True
+        # Pedido explícito de búsqueda
+        if re.search(
+            r"\b(busca en internet|investiga|navega|busca informaci[oó]n|qu[eé] dice la web|en internet)\b",
+            low,
+        ):
+            return True
+        # Pregunta de conocimiento general (no sobre "tú/CEOS")
+        if re.search(r"\b(qu[eé] es|qui[eé]n es|c[oó]mo funciona|historia de|definici[oó]n)\b", low):
+            if not re.search(r"\b(has aprendido|aprendiste|tu memoria|tu c[oó]dice|reservorio)\b", low):
+                return True
+        # Por defecto: conversar en local (corpus + reservorio + memoria)
+        return False
+
+    def _is_self_reflection(self, low: str) -> bool:
+        keys = (
+            "qué has aprendido", "que has aprendido", "qué aprendiste", "que aprendiste",
+            "qué sabes de mí", "que sabes de mi", "qué sabes sobre", "que sabes sobre",
+            "tu memoria", "tu códice", "tu codex", "el reservorio", "qué tienes en",
+            "cómo has evolucionado", "como has evolucionado", "qué has investigado",
+            "que has investigado", "qué recuerdas", "que recuerdas", "quién eres",
+            "quien eres", "cómo estás", "como estas", "qué tal", "que tal",
+            "háblame de ti", "hablame de ti", "qué puedes hacer", "que puedes hacer",
+            "aprendido hoy", "aprendido esta semana", "en el reservorio",
+        )
+        return any(k in low for k in keys)
+
+    def _self_status_reply(self, user_text: str) -> str:
+        """Respuesta conversacional sobre lo aprendido / estado interno (sin web)."""
+        lines = []
+        lines.append("Te respondo desde lo que tengo en memoria local (no desde una búsqueda web vacía).")
+        # Biblioteca
+        docs = nchars = 0
+        titles = []
+        if self.library is not None:
+            try:
+                st = self.library.stats() if hasattr(self.library, "stats") else {}
+                docs = int(st.get("docs") or 0)
+                nchars = int(st.get("chars") or 0)
+                for d in (self.library.list_docs() or [])[-8:]:
+                    t = d.get("title") or d.get("source_name") or ""
+                    a = d.get("author") or ""
+                    if t:
+                        titles.append(f"· {t}" + (f" ({a})" if a else ""))
+            except Exception:
+                pass
+        # Codex
+        crystals = maps = 0
+        try:
+            if hasattr(self.codex, "stats"):
+                cs = self.codex.stats() or {}
+                crystals = int(cs.get("crystals") or 0)
+                maps = int(cs.get("maps") or 0)
+            else:
+                crystals = len(self.codex._load(self.codex.crystals_file))
+                maps = len(self.codex._load(self.codex.maps_file))
+        except Exception:
+            pass
+        # Long memory
+        lm = ""
+        if self.long_memory is not None:
+            try:
+                lm = self.long_memory.context_block(user_text, limit=5) or ""
+            except Exception:
+                lm = ""
+        lines.append("")
+        lines.append(f"**Reservorio:** {docs} documento(s), ~{nchars} caracteres.")
+        if titles:
+            lines.append("Últimos materiales:")
+            lines.extend(titles[:6])
+        else:
+            lines.append("Aún no veo documentos en el reservorio de esta instancia (o el disco se reinició).")
+        lines.append(f"**Códice:** {crystals} cristales, {maps} mapas temáticos.")
+        if lm:
+            lines.append("")
+            lines.append("**Memoria reciente / hechos:**")
+            lines.append(lm[:800])
+        lines.append("")
+        lines.append(
+            "Si me preguntas por un autor o libro que hayas cargado, puedo hablar desde ese texto "
+            "(pestaña Investigar o «relee el reservorio»). "
+            "Si quieres que busque en internet algo concreto, dímelo: «investiga …» o «busca en internet …»."
+        )
+        return chr(10).join(lines)
 
 
     def _web_research_pack(self, user_text: str) -> tuple[str, dict]:
@@ -404,7 +494,7 @@ class ConversationalEngine:
         ).strip() or user_text.strip()
         meta = {"ok": False, "topic": topic, "results": 0}
         try:
-            report = research_topic(topic, focus=None)
+            report = research_topic(topic, focus=None, library=getattr(self, "library", None))
             points = []
             if isinstance(report, dict):
                 for r in (report.get("results") or report.get("sources") or [])[:6]:
@@ -447,6 +537,30 @@ class ConversationalEngine:
         want_long = self._wants_long(user_text, long)
         want_web = self._wants_web(user_text, web)
         web_meta = None
+        low_early = user_text.lower()
+
+        # Meta-conversación: qué has aprendido / estado → respuesta local directa
+        if self._is_self_reflection(low_early):
+            answer = self._self_status_reply(user_text)
+            history.append({"role": "user", "content": user_text, "ts": _now(), "device": device_id})
+            history.append({"role": "assistant", "content": answer, "ts": _now()})
+            session["messages"] = history[-40:]
+            try:
+                self.store.save(session_id, session)
+            except Exception:
+                pass
+            if self.long_memory is not None:
+                try:
+                    self.long_memory.absorb_turn(user_text, answer, do_facts=True, do_topics=True)
+                except Exception:
+                    pass
+            return {
+                "ok": True,
+                "reply": answer,
+                "engine": "local-reflection",
+                "mode": "self",
+                "web": False,
+            }
 
         # 1) Absorber hechos/identidad ANTES de responder (nombre, proyecto…)
         absorbed = {"facts": [], "topics": []}

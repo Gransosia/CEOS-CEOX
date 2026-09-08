@@ -182,6 +182,7 @@ def get_chat():
             identity=get_identity(),
             base_path=str(DATA_DIR / "chat"),
             long_memory=get_long_memory(),
+            library=get_library(),
         )
     return g.chat
 
