@@ -188,6 +188,39 @@ class LongMemory:
             parts.append("INSIGHTS PREVIOS:\n" + "\n".join(lines))
         return "\n\n".join(parts)
 
+    def export_all(self) -> dict:
+        """Exporta hechos/temas/insights para Sync/backup entre instancias."""
+        return {"exported_at": _now(), "data": self.data}
+
+    def import_all(self, payload: dict) -> dict:
+        """Fusiona un export_all() ajeno (dedupe por texto/tema)."""
+        foreign = (payload or {}).get("data") or {}
+        added = {"facts": 0, "topics": 0, "insights": 0}
+
+        existing_facts = {f.get("text") for f in self.data.get("facts", [])}
+        for f in foreign.get("facts", []) or []:
+            if f.get("text") and f.get("text") not in existing_facts:
+                self.data.setdefault("facts", []).append(f)
+                existing_facts.add(f.get("text"))
+                added["facts"] += 1
+
+        existing_topics = {t.get("topic") for t in self.data.get("topics", [])}
+        for t in foreign.get("topics", []) or []:
+            if t.get("topic") and t.get("topic") not in existing_topics:
+                self.data.setdefault("topics", []).append(t)
+                existing_topics.add(t.get("topic"))
+                added["topics"] += 1
+
+        existing_insights = {i.get("text") for i in self.data.get("insights", [])}
+        for i in foreign.get("insights", []) or []:
+            if i.get("text") and i.get("text") not in existing_insights:
+                self.data.setdefault("insights", []).append(i)
+                existing_insights.add(i.get("text"))
+                added["insights"] += 1
+
+        self._save()
+        return added
+
     def stats(self) -> dict:
         return {
             "facts": len(self.data.get("facts") or []),

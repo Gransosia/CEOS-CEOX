@@ -551,7 +551,7 @@ class ConversationalEngine:
             history.append({"role": "assistant", "content": answer, "ts": _now()})
             session["messages"] = history[-40:]
             try:
-                self.store.save(session_id, session)
+                self.store.save(session)
             except Exception:
                 pass
             if self.long_memory is not None:

@@ -66,6 +66,24 @@ class UserProfile:
     def get(self) -> dict:
         return dict(self.profile)
 
+    def export_all(self) -> dict:
+        return {"exported_at": _now(), "profile": self.profile}
+
+    def import_all(self, payload: dict) -> dict:
+        """Solo rellena huecos locales; nunca pisa un nombre/nivel ya declarado aquí."""
+        foreign = (payload or {}).get("profile") or {}
+        changed = False
+        for k in ("name", "display_name", "nivel", "voice_label", "notas"):
+            if foreign.get(k) and not self.profile.get(k):
+                self.profile[k] = foreign[k]
+                changed = True
+        if isinstance(foreign.get("preferencias"), dict):
+            self.profile.setdefault("preferencias", {}).update(foreign["preferencias"])
+            changed = True
+        if changed:
+            self._save()
+        return {"updated": changed}
+
     def touch_session(self):
         self.profile["last_seen"] = _now()
         self.profile["session_count"] = int(self.profile.get("session_count") or 0) + 1

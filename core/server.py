@@ -398,13 +398,23 @@ def api_learning_advance(traj_id):
 
 
 # ---------- API Sync ----------
+# NOTA: en Render free el disco es efímero (se pierde en cada reinicio/redeploy).
+# Este export/import es la copia de seguridad COMPLETA del estado de CEOS:
+# memoria de casos, gramática, Codex (cristales/mapas), reservorio (documentos
+# íntegros), memoria a largo plazo (hechos/temas) y perfil de usuario.
+# Antes solo cubría casos+gramática; el reservorio y el Codex se perdían igual.
 @app.route("/api/sync/export")
 def api_sync_export():
     mem = get_memory()
     grm = get_grammar()
     payload = mem.export_all()
     payload["grammar"] = grm.export_learned()
+    payload["codex"] = get_codex().export_compact()
+    payload["library"] = get_library().export_all()
+    payload["long_memory"] = get_long_memory().export_all()
+    payload["user"] = get_user().export_all()
     payload["device"] = get_identity().state.get("device_id")
+    payload["exported_at"] = datetime.now(timezone.utc).isoformat()
     return jsonify(payload)
 
 
@@ -415,6 +425,26 @@ def api_sync_import():
     grm = get_grammar()
     stats = mem.merge_from(foreign)
     stats["fragmentos_added"] = grm.merge_learned(foreign.get("grammar", {}))
+    if foreign.get("codex"):
+        try:
+            stats["codex"] = get_codex().import_compact(foreign["codex"])
+        except Exception as e:
+            stats["codex_error"] = str(e)[:200]
+    if foreign.get("library"):
+        try:
+            stats["library"] = get_library().import_all(foreign["library"])
+        except Exception as e:
+            stats["library_error"] = str(e)[:200]
+    if foreign.get("long_memory"):
+        try:
+            stats["long_memory"] = get_long_memory().import_all(foreign["long_memory"])
+        except Exception as e:
+            stats["long_memory_error"] = str(e)[:200]
+    if foreign.get("user"):
+        try:
+            stats["user"] = get_user().import_all(foreign["user"])
+        except Exception as e:
+            stats["user_error"] = str(e)[:200]
     get_identity().log(f"Sync import: {stats}", importance=2)
     return jsonify({"ok": True, "stats": stats})
 
@@ -427,6 +457,9 @@ def api_sync_status():
         "cases": len(mem.cases()),
         "hitos": len(mem.hitos()),
         "trajectories": len(mem.trajectories()),
+        "codex": get_codex().stats(),
+        "library_docs": len(get_library().list_docs()),
+        "long_memory": get_long_memory().stats(),
         "grammar": grm.stats(),
         "server_time": datetime.now(timezone.utc).isoformat(),
         "lan_ip": get_lan_ip(),

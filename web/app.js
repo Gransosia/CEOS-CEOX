@@ -1342,6 +1342,8 @@ async function refreshSync() {
     <div class="stat"><div class="n">${st.grammar.fragmentos}</div><div class="l">Fragmentos</div></div>
     <div class="stat"><div class="n">${st.trajectories}</div><div class="l">Trayectorias</div></div>
     <div class="stat"><div class="n">${st.hitos}</div><div class="l">Hitos</div></div>
+    <div class="stat"><div class="n">${st.library_docs}</div><div class="l">Reservorio</div></div>
+    <div class="stat"><div class="n">${st.codex.crystals}</div><div class="l">Cristales</div></div>
   `;
 }
 
@@ -1351,7 +1353,7 @@ document.getElementById("btn-export").addEventListener("click", async () => {
   const box = document.getElementById("sync-result");
   box.classList.remove("hidden");
   box.className = "result ok";
-  box.textContent = "Corpus exportado. Copia el JSON y pégalo en otro dispositivo, o guárdalo.";
+  box.textContent = "Copia completa exportada (casos, gramática, Codex, reservorio y memoria a largo plazo). Guarda este JSON antes de reiniciar/redesplegar en Render free.";
 });
 
 document.getElementById("btn-import").addEventListener("click", async () => {
