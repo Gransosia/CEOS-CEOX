@@ -199,6 +199,18 @@ def get_lan_ip():
 
 
 # ---------- Páginas ----------
+@app.route("/api/constitution")
+def api_constitution():
+    from .constitution import as_public_text, NAME, NORTH_STAR, PRINCIPLES
+    return jsonify({
+        "ok": True,
+        "name": NAME,
+        "north_star": NORTH_STAR,
+        "principles": PRINCIPLES,
+        "text": as_public_text(),
+    })
+
+
 @app.route("/health")
 @app.route("/healthz")
 def health():

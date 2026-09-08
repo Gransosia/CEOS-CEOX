@@ -184,6 +184,11 @@
         </div>
 
         <div class="card">
+          <h2>Constitución de CEOS</h2>
+          <p class="muted">Ancla de identidad: qué es, qué no es, y cómo debe conversar.</p>
+          <pre id="constitution-box" class="mono" style="white-space:pre-wrap;max-height:280px;overflow:auto">cargando…</pre>
+        </div>
+        <div class="card">
           <h2>Identidad del Motor</h2>
           <div id="identity-box" class="mono">cargando…</div>
         </div>
@@ -1513,6 +1518,16 @@
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
     else bind();
     setTimeout(bind, 500);
+  })();
+  </script>
+
+  
+  <script>
+  (function(){
+    fetch("/api/constitution").then(function(r){return r.json()}).then(function(d){
+      var el = document.getElementById("constitution-box");
+      if (el) el.textContent = d.text || d.north_star || "";
+    }).catch(function(){});
   })();
   </script>
 

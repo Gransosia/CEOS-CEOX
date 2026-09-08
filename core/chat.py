@@ -168,7 +168,12 @@ class ConversationalEngine:
             pass
 
         # Doctrina (siempre, compacta)
-        parts.append("DOCTRINA CRONOS (núcleo):\n" + "\n".join(f"- {d}" for d in CORE_DOCTRINE[:10]))
+        try:
+            from .constitution import as_context_block
+            parts.append(as_context_block())
+        except Exception:
+            pass
+        parts.append("DOCTRINA CRONOS (núcleo):\n" + "\n".join(f"- {d}" for d in CORE_DOCTRINE[:8]))
 
         # Codex relacionado
         try:

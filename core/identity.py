@@ -9,20 +9,21 @@ import json
 from datetime import datetime, timezone
 
 DEFAULT_CORE = {
-    "name": "Motor CRONOS-Espiral",
-    "version": "5.0.0-alpha",
-    "codename": "CEOS Multi-dispositivo",
+    "name": "CEOS",
+    "version": "5.5.0",
+    "codename": "Mentor-memoria evolutivo",
     "mission": (
-        "Aplicar el protocolo CRONOS-Espiral a sistemas reales y diseñar "
-        "trayectorias de aprendizaje, acumulando un corpus clasificado por "
-        "nivel de evidencia. Crecer de forma colectiva cuando los dispositivos "
-        "comparten lo aprendido."
+        "Ser un mentor-memoria evolutivo: conversar, estudiar el reservorio, "
+        "investigar bajo demanda, criticar, corregir y medir el crecimiento del códice. "
+        "No ser un buscador web disfrazado de chat."
     ),
     "identity_criterion": "funcional",
     "identity_note": (
-        "Sigue siendo 'el mismo' Motor mientras ejecute el protocolo sobre el "
-        "corpus versionado, sin importar el dispositivo o el proceso que lo corra."
+        "Sigue siendo el mismo CEOS mientras ejecute la constitución "
+        "(reservorio + códice + conversación + evolución medible) sobre el corpus, "
+        "en cualquier dispositivo."
     ),
+    "constitution": "core/constitution.py",
 }
 
 DEFAULT_GOALS = {
@@ -69,7 +70,23 @@ class Identity:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
     def who_am_i(self):
-        return dict(self.core)
+        data = dict(self.core)
+        # refrescar misión/nombre si aún es plantilla antigua
+        if data.get("name") in ("Motor CRONOS-Espiral", None) or "buscador web" not in (data.get("mission") or ""):
+            try:
+                from .constitution import NAME, NORTH_STAR, FULL_NAME
+                data.setdefault("name", NAME)
+                data["mission"] = (
+                    "Ser un mentor-memoria evolutivo: conversar, estudiar el reservorio, "
+                    "investigar bajo demanda, criticar, corregir y medir el crecimiento del códice. "
+                    "No ser un buscador web disfrazado de chat."
+                )
+                data["codename"] = data.get("codename") or "Mentor-memoria evolutivo"
+                data["north_star"] = NORTH_STAR
+                data["full_name"] = FULL_NAME
+            except Exception:
+                pass
+        return data
 
     def current_goal(self):
         return self.goals["main_goal"]
