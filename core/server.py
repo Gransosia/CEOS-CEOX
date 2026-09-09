@@ -826,6 +826,31 @@ def api_mentor_ingest_seed():
     return jsonify({"ok": True, "results": results, "stats": get_mentor().knowledge_stats()})
 
 
+@app.route("/api/codex/prism", methods=["POST"])
+def api_codex_prism():
+    """
+    Destila un texto (idea, párrafo, documento corto) a un 'prisma': muy
+    poco soporte guardado (átomos + fórmula + semilla), casi ilimitadas
+    lecturas al expandirlo (ver /api/codex/prism/<id>/expand).
+    Usa LLM externo si hay clave configurada (Groq/Gemini/...); si no,
+    cae a heurística local — nunca falla por falta de clave.
+    """
+    data = request.get_json(force=True) or {}
+    text = (data.get("text") or "").strip()
+    topic = (data.get("topic") or "general").strip()
+    use_llm = bool(data.get("use_llm", True))
+    if not text:
+        return jsonify({"ok": False, "error": "falta 'text'"}), 400
+    result = get_codex().crystallize_prism(text, topic, use_llm=use_llm)
+    return jsonify(result)
+
+
+@app.route("/api/codex/prism/<cid>/expand")
+def api_codex_prism_expand(cid):
+    n = request.args.get("n", 3, type=int)
+    return jsonify(get_codex().expand_prism(cid, n=n))
+
+
 @app.route("/api/mentor/library")
 def api_mentor_library():
     return jsonify(get_library().list_docs())
