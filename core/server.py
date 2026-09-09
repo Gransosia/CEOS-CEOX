@@ -199,6 +199,30 @@ def get_lan_ip():
 
 
 # ---------- Páginas ----------
+@app.route("/api/identity/memory")
+def api_identity_memory():
+    """Identidad actual del motor y del usuario, inferida desde la memoria."""
+    from .identity_memory import compose_identity, teaching_seed_from_identity
+    try:
+        from .evolution_scale import EvolutionScale
+        scale = EvolutionScale(base_path=str(DATA_DIR / "evolve"))
+    except Exception:
+        scale = None
+    portrait = compose_identity(
+        identity=get_identity(),
+        library=get_library(),
+        codex=get_codex(),
+        long_memory=get_long_memory(),
+        user=get_user(),
+        evolution_scale=scale,
+    )
+    return jsonify({
+        "ok": True,
+        "portrait": portrait,
+        "teaching_seed": teaching_seed_from_identity(portrait),
+    })
+
+
 @app.route("/api/constitution")
 def api_constitution():
     from .constitution import as_public_text, NAME, NORTH_STAR, PRINCIPLES
@@ -398,54 +422,52 @@ def api_learning_advance(traj_id):
 
 
 # ---------- API Sync ----------
-# NOTA: en Render free el disco es efímero (se pierde en cada reinicio/redeploy).
-# Este export/import es la copia de seguridad COMPLETA del estado de CEOS:
-# memoria de casos, gramática, Codex (cristales/mapas), reservorio (documentos
-# íntegros), memoria a largo plazo (hechos/temas) y perfil de usuario.
-# Antes solo cubría casos+gramática; el reservorio y el Codex se perdían igual.
 @app.route("/api/sync/export")
 def api_sync_export():
-    mem = get_memory()
-    grm = get_grammar()
-    payload = mem.export_all()
-    payload["grammar"] = grm.export_learned()
-    payload["codex"] = get_codex().export_compact()
-    payload["library"] = get_library().export_all()
-    payload["long_memory"] = get_long_memory().export_all()
-    payload["user"] = get_user().export_all()
+    """Snapshot completo (memoria + códice + reservorio + …)."""
+    from .persist import build_snapshot
+    full = (request.args.get("full") or "1") not in ("0", "false", "no")
+    if full:
+        payload = build_snapshot(
+            data_dir=DATA_DIR,
+            memory=get_memory(),
+            grammar=get_grammar(),
+            codex=get_codex(),
+            library=get_library(),
+            long_memory=get_long_memory(),
+            identity=get_identity(),
+            user=get_user(),
+        )
+    else:
+        payload = get_memory().export_all()
+        payload["grammar"] = get_grammar().export_learned()
     payload["device"] = get_identity().state.get("device_id")
-    payload["exported_at"] = datetime.now(timezone.utc).isoformat()
     return jsonify(payload)
 
 
 @app.route("/api/sync/import", methods=["POST"])
 def api_sync_import():
+    from .persist import restore_snapshot
     foreign = request.get_json(force=True) or {}
-    mem = get_memory()
-    grm = get_grammar()
-    stats = mem.merge_from(foreign)
-    stats["fragmentos_added"] = grm.merge_learned(foreign.get("grammar", {}))
-    if foreign.get("codex"):
-        try:
-            stats["codex"] = get_codex().import_compact(foreign["codex"])
-        except Exception as e:
-            stats["codex_error"] = str(e)[:200]
-    if foreign.get("library"):
-        try:
-            stats["library"] = get_library().import_all(foreign["library"])
-        except Exception as e:
-            stats["library_error"] = str(e)[:200]
-    if foreign.get("long_memory"):
-        try:
-            stats["long_memory"] = get_long_memory().import_all(foreign["long_memory"])
-        except Exception as e:
-            stats["long_memory_error"] = str(e)[:200]
-    if foreign.get("user"):
-        try:
-            stats["user"] = get_user().import_all(foreign["user"])
-        except Exception as e:
-            stats["user_error"] = str(e)[:200]
-    get_identity().log(f"Sync import: {stats}", importance=2)
+    if foreign.get("format") == "ceos-full-snapshot-v1" or foreign.get("library") or foreign.get("codex"):
+        stats = restore_snapshot(
+            foreign,
+            data_dir=DATA_DIR,
+            memory=get_memory(),
+            grammar=get_grammar(),
+            codex=get_codex(),
+            library=get_library(),
+            long_memory=get_long_memory(),
+            identity=get_identity(),
+            user=get_user(),
+        )
+    else:
+        stats = get_memory().merge_from(foreign)
+        stats["fragmentos_added"] = get_grammar().merge_learned(foreign.get("grammar", {}))
+    try:
+        get_identity().log(f"Sync import: {stats}", importance=2)
+    except Exception:
+        pass
     return jsonify({"ok": True, "stats": stats})
 
 
@@ -453,14 +475,19 @@ def api_sync_import():
 def api_sync_status():
     mem = get_memory()
     grm = get_grammar()
+    lib_stats = {}
+    try:
+        lib_stats = get_library().stats()
+    except Exception:
+        pass
     return jsonify({
         "cases": len(mem.cases()),
         "hitos": len(mem.hitos()),
         "trajectories": len(mem.trajectories()),
-        "codex": get_codex().stats(),
-        "library_docs": len(get_library().list_docs()),
-        "long_memory": get_long_memory().stats(),
         "grammar": grm.stats(),
+        "library": lib_stats,
+        "data_dir": str(DATA_DIR),
+        "hint": "Tras cargar libros: Sync → Descargar copia completa. Tras un deploy: Restaurar snapshot.",
         "server_time": datetime.now(timezone.utc).isoformat(),
         "lan_ip": get_lan_ip(),
     })
@@ -797,7 +824,27 @@ def api_mentor_ingest_file():
             stats = lib.stats()
         except Exception:
             stats = {}
-        return jsonify({"ok": ok_n > 0, "uploaded": ok_n, "total": len(results), "results": results, "library_stats": stats, "data_dir": str(DATA_DIR)})
+        # auto-backup local en disco del servidor
+        try:
+            from .persist import build_snapshot
+            snap = build_snapshot(
+                data_dir=DATA_DIR,
+                memory=get_memory(),
+                grammar=get_grammar(),
+                codex=get_codex(),
+                library=lib,
+                long_memory=get_long_memory(),
+                identity=get_identity(),
+                user=get_user(),
+            )
+            bak = DATA_DIR / "backups"
+            bak.mkdir(parents=True, exist_ok=True)
+            (bak / "last_full_snapshot.json").write_text(
+                json.dumps(snap, ensure_ascii=False), encoding="utf-8"
+            )
+        except Exception:
+            pass
+        return jsonify({"ok": ok_n > 0, "uploaded": ok_n, "total": len(results), "results": results, "library_stats": stats, "data_dir": str(DATA_DIR), "backup": "last_full_snapshot.json"})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e), "trace": _tb.format_exc()[-500:], "results": []})
 
@@ -824,31 +871,6 @@ def api_mentor_ingest_seed():
             results.append({"file": path.name, "status": "error", "error": str(e)})
     get_mentor().seed_core_doctrine()
     return jsonify({"ok": True, "results": results, "stats": get_mentor().knowledge_stats()})
-
-
-@app.route("/api/codex/prism", methods=["POST"])
-def api_codex_prism():
-    """
-    Destila un texto (idea, párrafo, documento corto) a un 'prisma': muy
-    poco soporte guardado (átomos + fórmula + semilla), casi ilimitadas
-    lecturas al expandirlo (ver /api/codex/prism/<id>/expand).
-    Usa LLM externo si hay clave configurada (Groq/Gemini/...); si no,
-    cae a heurística local — nunca falla por falta de clave.
-    """
-    data = request.get_json(force=True) or {}
-    text = (data.get("text") or "").strip()
-    topic = (data.get("topic") or "general").strip()
-    use_llm = bool(data.get("use_llm", True))
-    if not text:
-        return jsonify({"ok": False, "error": "falta 'text'"}), 400
-    result = get_codex().crystallize_prism(text, topic, use_llm=use_llm)
-    return jsonify(result)
-
-
-@app.route("/api/codex/prism/<cid>/expand")
-def api_codex_prism_expand(cid):
-    n = request.args.get("n", 3, type=int)
-    return jsonify(get_codex().expand_prism(cid, n=n))
 
 
 @app.route("/api/mentor/library")

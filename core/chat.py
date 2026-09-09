@@ -229,23 +229,94 @@ class ConversationalEngine:
         try:
             frags = self.mentor._pick_knowledge(user_text, n=4) if hasattr(self.mentor, "_pick_knowledge") else []
             if frags:
-                parts.append("FRAGMENTOS BIBLIOTECA:\n" + "\n---\n".join(str(f)[:300] for f in frags[:4]))
+                parts.append("FRAGMENTOS BIBLIOTECA:" + chr(10) + (chr(10) + "---" + chr(10)).join(str(f)[:300] for f in frags[:4]))
         except Exception:
             pass
 
-        return "\n\n".join(parts)
+        # RESERVORIO: lectura anclada (núcleo del bucle cerrado)
+        if self.library is not None and len((user_text or "").strip()) >= 8:
+            try:
+                low = user_text.lower()
+                lens = "general"
+                if any(k in low for k in ("estilo", "voz", "narrat", "prosa", "literar")):
+                    lens = "estilo"
+                elif any(k in low for k in ("tema", "motivo", "amor", "memoria")):
+                    lens = "temas"
+                elif any(k in low for k in ("crític", "critic", "debil", "valor")):
+                    lens = "critica"
+                study = self.library.study(
+                    query=user_text[:120],
+                    lens=lens,
+                    limit_docs=4,
+                    sample_chunks=6,
+                    grammar=None,
+                    codex=None,
+                )
+                if study.get("docs_used"):
+                    block = ["RESERVORIO LOCAL (fuente prioritaria):"]
+                    block.append(study.get("meta_conclusion") or "")
+                    for r in (study.get("readings") or [])[:3]:
+                        title = r.get("title") or ""
+                        author = r.get("author") or ""
+                        ex = (r.get("excerpt") or "")[:500]
+                        block.append("— " + title + ((" (" + author + ")") if author else ""))
+                        if ex:
+                            block.append(ex)
+                    parts.append(chr(10).join(block))
+            except Exception:
+                pass
+
+        return (chr(10) + chr(10)).join(parts)
 
     def _local_reply(self, user_text: str, history: list, context: str) -> str:
-        """Respuesta local natural sin LLM externo."""
-        t = user_text.strip().lower()
+        """
+        Conversación fluida local (sin LLM).
+        Prioriza: continuidad del diálogo → reservorio → códice → protocolo.
+        Evita tonos de informe o búsqueda web.
+        """
+        raw = (user_text or "").strip()
+        t = raw.lower()
 
-        # Saludos y small talk
-        if re.search(r"\b(hola|buenas|hey|qué tal|que tal|buenos días|buenas tardes|buenas noches)\b", t):
+        # --- historial reciente (continuidad) ---
+        prev_user = ""
+        prev_bot = ""
+        turns = []
+        for m in history[-8:]:
+            role = m.get("role")
+            content = (m.get("content") or "").strip()
+            if not content:
+                continue
+            if role == "user":
+                turns.append(("user", content))
+                prev_user = content
+            elif role in ("assistant", "ceos", "bot"):
+                turns.append(("assistant", content))
+                prev_bot = content
+
+        name = ""
+        try:
+            u = self.user.get() or {}
+            name = (u.get("display_name") or u.get("name") or "").strip()
+        except Exception:
+            name = ""
+        hello = (name + ", ") if name and name.lower() not in ("ceos", "cronos") else ""
+
+        def follow_up(options):
+            return " " + options
+
+        # --- saludos ---
+        if re.match(
+            r"^(hola|buenas|hey|qué tal|que tal|buenos días|buenas tardes|buenas noches|hi)([!?.\s]*)$",
+            t,
+        ) or (
+            len(t) < 24
+            and re.search(r"\b(hola|buenas|qué tal|que tal)\b", t)
+            and not re.search(r"\b(libro|estilo|autor|protocolo|aprend)\b", t)
+        ):
             tail = ""
             if self.long_memory is not None:
                 try:
                     lt = (self.long_memory.data.get("last_topics") or [])[:2]
-                    # evitar repetir el saludo mismo como "tema"
                     names = []
                     for x in lt:
                         top = (x.get("topic") or "").strip()
@@ -255,82 +326,147 @@ class ConversationalEngine:
                         tail = " La última vez tocamos: " + "; ".join(names[:2]) + "."
                 except Exception:
                     pass
-            try:
-                g = self.user.greeting()
-                if g:
-                    return (
-                        g
-                        + " Estoy en modo conversación."
-                        + tail
-                        + " Puedes preguntarme por el protocolo, pedir un análisis, una lección o pensar en voz alta conmigo."
-                    )
-            except Exception:
-                pass
             return (
-                "Hola. Soy CEOS, en modo conversación."
+                f"Hola{', ' + name if name else ''}. Aquí estoy, en conversación contigo."
                 + tail
-                + " ¿En qué quieres trabajar: un sistema concreto, un concepto del protocolo, o algo que estés elaborando ahora?"
+                + follow_up(
+                    "¿Seguimos con tus textos, con el protocolo CRONOS, o con algo que te ronda ahora?"
+                )
             )
 
-        if re.search(r"\b(gracias|thank)\b", t):
-            return "De nada. Cuando quieras seguimos."
+        if re.search(r"\b(gracias|thank you|thanks)\b", t) and len(t) < 40:
+            return "De nada. Cuando quieras, seguimos el hilo."
 
-        if re.search(r"\b(quién eres|quien eres|qué eres|que eres|quién sois)\b", t):
+        # --- continuidad: "y eso?", "cuéntame más", "por qué?" ---
+        if re.match(
+            r"^(y eso|sigue|continúa|continua|cuéntame más|cuentame mas|más|mas|por qué|porque|y\?|vale y|ok y|explícate|explicate)([!?.\s]*)$",
+            t,
+        ) or (
+            len(t) < 36
+            and re.search(r"\b(más|mas|sigue|profundiza|amplía|amplia|detalle)\b", t)
+            and prev_bot
+        ):
+            if prev_bot:
+                # ampliar el último tema sin reiniciar
+                base = prev_bot[:500]
+                extra = ""
+                if "RESERVORIO LOCAL" in (context or ""):
+                    extra = context.split("RESERVORIO LOCAL", 1)[-1].strip()[:600]
+                if extra:
+                    return (
+                        "Sigo sobre lo anterior.\n\n"
+                        + extra
+                        + follow_up("¿Quieres que lo enlace con otro capítulo o con tu estilo en general?")
+                    )
+                return (
+                    "Sigo el hilo. Antes decía, en esencia: "
+                    + base[:320]
+                    + follow_up("¿Qué parte quieres apretar: estilo, temas o un pasaje concreto?")
+                )
+
+        # --- identidad ---
+        if re.search(r"\b(quién eres|quien eres|qué eres|que eres)\b", t):
             return (
-                "Soy CEOS, el Motor CRONOS-Espiral. Ejecuto el protocolo sobre un corpus versionado: "
-                "identidad, memoria, gramática de infinitud discreta y Codex. "
-                "No soy un modelo genérico: mi criterio de continuidad es funcional. "
-                "¿Quieres que te explique alguna pieza concreta (regímenes, Espiral, membrana, operaciones)?"
+                f"{hello}Soy CEOS: un mentor-memoria. Converso, estudio lo que cargues en el reservorio, "
+                "investigo si me lo pides, y voy actualizando un códice de cristales y mapas. "
+                "No soy un buscador ni un modelo genérico sin memoria."
+                + follow_up("¿Quieres que te diga qué tengo aprendido ahora mismo de ti o de tus textos?")
             )
 
-        # Intento de usar codex expand / knowledge
-        topic = user_text.strip()
+        # --- anclaje conversacional al reservorio (no volcar informe) ---
+        if context and "RESERVORIO LOCAL" in context:
+            chunk = context.split("RESERVORIO LOCAL", 1)[-1].strip()
+            # limpiar metadatos ruidosos
+            lines = []
+            for ln in chunk.splitlines():
+                ln = ln.strip()
+                if not ln or ln.startswith("(fuente"):
+                    continue
+                if ln.startswith("Relectura del reservorio"):
+                    continue
+                lines.append(ln)
+            body = "\n".join(lines).strip()[:900]
+            if body:
+                opener = f"{hello}Mirando lo que tengo en el reservorio"
+                if re.search(r"estilo|voz|prosa|narrat", t):
+                    opener += " sobre el estilo"
+                elif re.search(r"tema|motivo|amor|memoria", t):
+                    opener += " sobre los temas"
+                opener += ":\n\n"
+                return (
+                    opener
+                    + body
+                    + follow_up(
+                        "¿Seguimos con un libro concreto, comparando obras, o con cómo suena tu voz en un párrafo?"
+                    )
+                )
+
+        # --- códice, si hay mapa del tema ---
+        topic = raw
         try:
             if hasattr(self.codex, "expand_topic"):
                 exp = self.codex.expand_topic(topic[:80])
                 if isinstance(exp, dict) and exp.get("ok"):
                     bits = []
-                    for f in (exp.get("fragments") or [])[:5]:
-                        bits.append(str(f)[:220])
-                    for m in (exp.get("molecules") or [])[:3]:
+                    for f in (exp.get("fragments") or [])[:4]:
+                        bits.append(str(f)[:200])
+                    for m in (exp.get("molecules") or [])[:2]:
                         if isinstance(m, dict):
-                            bits.append(f"{m.get('formula','')}: {m.get('meaning','')[:160]}")
+                            bits.append(f"{m.get('formula','')}: {m.get('meaning','')[:140]}")
                     body = "\n\n".join(bits)
                     if body:
                         return (
-                            f"Desde el Codex, sobre «{topic[:60]}»:\n\n{body[:900]}\n\n"
-                            "¿Quieres que lo aterrice en un sistema real o que profundice en algún punto?"
+                            f"{hello}Desde el códice, enlazado con lo que me dices:\n\n"
+                            + body[:800]
+                            + follow_up("¿Lo aplicamos a un caso tuyo o lo dejamos en concepto?")
                         )
         except Exception:
             pass
 
         try:
-            frags = self.mentor._pick_knowledge(user_text, n=3)
+            frags = self.mentor._pick_knowledge(raw, n=2) if hasattr(self.mentor, "_pick_knowledge") else []
             if frags:
-                joined = "\n\n".join(str(f)[:280] for f in frags)
+                joined = "\n\n".join(str(f)[:220] for f in frags)
                 return (
-                    f"Con lo que tengo en el corpus:\n\n{joined}\n\n"
-                    "Si me das un sistema concreto (o un ejemplo), lo puedo leer con el protocolo "
-                    "(membrana, regímenes, operaciones, posición en la Espiral)."
+                    f"{hello}Con el corpus que manejo:\n\n"
+                    + joined
+                    + follow_up("¿Te encaja o lo contrastamos con un ejemplo real?")
                 )
         except Exception:
             pass
 
-        # Preguntas de análisis
+        # --- análisis / protocolo ---
         if re.search(r"\b(analiza|análisis|diagnostica|evalúa|evalua)\b", t):
             return (
-                "Para analizarlo bien necesito una descripción del sistema: "
-                "qué es, qué lo mantiene, qué lo tensiona y qué está entrando o saliendo. "
-                "Puedes escribirlo en unas líneas; con eso aplico el protocolo."
+                f"{hello}Para analizar con el protocolo necesito el sistema en juego: "
+                "quiénes intervienen, qué se intercambia, y qué te preocupa del resultado."
+                + follow_up("¿Me lo cuentas en 4–5 frases o pegas un fragmento?")
             )
 
-        # Default conversacional
+        if re.search(r"\b(protocolo|cronos|espiral|membrana|arquetipo)\b", t):
+            return (
+                f"{hello}El núcleo CRONOS mira sistemas con membrana, regímenes e intercambios, "
+                "y la Espiral ordena explorar → aprender → instituir → renovar. "
+                "No es adorno: es una forma de leer complejidad sin aplastarla."
+                + follow_up("¿Lo quieres sobre un equipo, un texto tuyo, o una decisión que tienes encima?")
+            )
+
+        # --- fallback conversacional (nunca informe vacío) ---
+        if prev_bot and len(raw) < 80:
+            return (
+                f"{hello}Te sigo. Sobre lo que veníamos hablando, ¿puedes precisar un poco más "
+                f"qué te interesa de «{raw[:60]}»?"
+                + follow_up("Con una frase de más suele bastar para aterrizar.")
+            )
+
         return (
-            "Te escucho. Puedo ayudarte a pensar con el protocolo CRONOS: "
-            "clarificar conceptos, analizar un sistema, diseñar una trayectoria de aprendizaje "
-            "o trabajar sobre lo que ya hay en el Codex.\n\n"
-            "Dime con más detalle qué tienes delante o qué quieres entender."
+            f"{hello}Te escucho. Puedo trabajar con tus textos del reservorio, con el códice, "
+            "con coaching/idiomas, o pensar contigo en voz alta."
+            + follow_up(
+                "¿Sobre qué quieres tirar del hilo ahora: un libro, un aprendizaje, o una pregunta suelta?"
+            )
         )
+
 
     def _call_llm_chat(self, messages: list, context: str, max_tokens: int = 1200) -> dict:
         """Llama al LLM en modo chat multi-turno nativo."""
@@ -339,6 +475,14 @@ class ConversationalEngine:
             return {"ok": False, "error": "sin_api"}
 
         api_msgs = []
+        system = (
+            "Eres CEOS, mentor-memoria en castellano. Conversas con naturalidad: "
+            "turnos claros, continuidad con el hilo, sin tono de informe ni de buscador. "
+            "Prioriza el RESERVORIO LOCAL del contexto si existe. "
+            "Si no sabes, dilo. Termina a menudo con una pregunta breve de seguimiento. "
+            "No inventes libros o hechos que no estén en el contexto."
+        )
+        api_msgs.append({"role": "system", "content": system})
         for m in messages[-16:]:
             role = m.get("role")
             content = (m.get("content") or "").strip()
@@ -426,12 +570,34 @@ class ConversationalEngine:
             "quien eres", "cómo estás", "como estas", "qué tal", "que tal",
             "háblame de ti", "hablame de ti", "qué puedes hacer", "que puedes hacer",
             "aprendido hoy", "aprendido esta semana", "en el reservorio",
+            "quién soy", "quien soy", "quién eres tú", "quien eres tu",
+            "quiénes somos", "quienes somos", "nuestra identidad", "tu identidad",
+            "la memoria", "quiénes somos", "determina quién",
         )
         return any(k in low for k in keys)
 
     def _self_status_reply(self, user_text: str) -> str:
         """Respuesta conversacional sobre lo aprendido / estado interno (sin web)."""
         lines = []
+        try:
+            from .identity_memory import compose_identity, teaching_seed_from_identity
+            portrait = compose_identity(
+                identity=self.identity,
+                library=self.library,
+                codex=self.codex,
+                long_memory=self.long_memory,
+                user=self.user,
+            )
+            lines.append(portrait.get("narrativa") or "")
+            lines.append("")
+            lines.append(portrait.get("thesis") or "")
+            lines.append("")
+            seed = teaching_seed_from_identity(portrait)
+            if seed:
+                lines.append(seed)
+                lines.append("")
+        except Exception:
+            pass
         lines.append("Te respondo desde lo que tengo en memoria local (no desde una búsqueda web vacía).")
         # Biblioteca
         docs = nchars = 0
@@ -551,7 +717,7 @@ class ConversationalEngine:
             history.append({"role": "assistant", "content": answer, "ts": _now()})
             session["messages"] = history[-40:]
             try:
-                self.store.save(session)
+                self.store.save(session_id, session)
             except Exception:
                 pass
             if self.long_memory is not None:

@@ -289,49 +289,6 @@ class DocumentLibrary:
     def list_docs(self) -> list:
         return self._load_index()
 
-    def export_all(self) -> dict:
-        """Exporta índice + texto de cada documento del reservorio (para Sync/backup).
-
-        No incluye binarios de media (audio/vídeo); sí incluye transcripciones
-        de texto ya indexadas, que son las que alimentan el corpus.
-        """
-        index = self._load_index()
-        docs_payload = []
-        for entry in index:
-            stored = entry.get("stored_as")
-            text = ""
-            if stored:
-                p = self.docs_dir / stored
-                if p.exists():
-                    try:
-                        text = p.read_text(encoding="utf-8")
-                    except Exception:
-                        text = ""
-            docs_payload.append({"entry": entry, "text": text})
-        return {"exported_at": _now(), "docs": docs_payload}
-
-    def import_all(self, data: dict) -> dict:
-        """Importa un export_all() de otra instancia. Fusiona por id, sin duplicar."""
-        index = self._load_index()
-        existing_ids = {e.get("id") for e in index}
-        added = 0
-        for item in (data or {}).get("docs", []) or []:
-            entry = item.get("entry") or {}
-            doc_id = entry.get("id")
-            if not doc_id or doc_id in existing_ids:
-                continue
-            text = item.get("text") or ""
-            stored_name = entry.get("stored_as") or f"{doc_id}.txt"
-            try:
-                (self.docs_dir / stored_name).write_text(text, encoding="utf-8")
-            except Exception:
-                continue
-            index.append(entry)
-            existing_ids.add(doc_id)
-            added += 1
-        self._save_index(index)
-        return {"docs_added": added, "total_docs": len(index)}
-
     def ingest_file(
         self,
         path: Path,

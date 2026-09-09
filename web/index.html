@@ -184,6 +184,12 @@
         </div>
 
         <div class="card">
+          <h2>Identidad-memoria</h2>
+          <p class="muted">Quiénes somos ahora, según lo recordado (reservorio, códice, hechos).</p>
+          <div id="identity-memory-box" class="result">Cargando…</div>
+          <button type="button" id="btn-identity-memory" class="primary" style="margin-top:8px">Actualizar retrato</button>
+        </div>
+        <div class="card">
           <h2>Constitución de CEOS</h2>
           <p class="muted">Ancla de identidad: qué es, qué no es, y cómo debe conversar.</p>
           <pre id="constitution-box" class="mono" style="white-space:pre-wrap;max-height:280px;overflow:auto">cargando…</pre>
@@ -512,7 +518,7 @@
       </section>
 
       <!-- SYNC -->
-      <section id="view-sync" class="view">
+      <section id="view-sync" data-persist="1" class="view">
         <div class="card">
           <h2>Sincronización multi-dispositivo</h2>
           <p class="muted">Exporta el conocimiento de este dispositivo o importa el de otro. Cuando varios dispositivos sincronizan, el corpus crece de forma colectiva.</p>
@@ -1528,6 +1534,84 @@
       var el = document.getElementById("constitution-box");
       if (el) el.textContent = d.text || d.north_star || "";
     }).catch(function(){});
+  })();
+  </script>
+
+  
+  <script>
+  (function(){
+    async function downloadFullSnapshot(){
+      try {
+        var res = await fetch("/api/sync/export?full=1");
+        var data = await res.json();
+        var blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "ceos_snapshot_" + new Date().toISOString().slice(0,19).replace(/[:T]/g,"-") + ".json";
+        a.click();
+        alert("Copia completa descargada. Guárdala en tu PC. Tras un reinicio de Render, restaura desde Sync.");
+      } catch(e) {
+        alert("Error al exportar: " + e.message);
+      }
+    }
+    async function restoreSnapshotFile(file){
+      var text = await file.text();
+      var data = JSON.parse(text);
+      var res = await fetch("/api/sync/import", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(data)
+      });
+      var out = await res.json();
+      alert(out.ok ? ("Restaurado: " + ((out.stats && out.stats.restored) || []).join(", ")) : (out.error || "Error"));
+    }
+    function bindPersist(){
+      var box = document.getElementById("view-sync") || document.querySelector("[data-view='sync']");
+      if (!box || box.__persistBound) return;
+      box.__persistBound = true;
+      var wrap = document.createElement("div");
+      wrap.className = "card";
+      wrap.innerHTML = "<h2>Copia completa (anti-amnesia)</h2>"
+        + "<p class='muted'>Render Free borra el disco al reiniciar. Descarga una copia tras cargar libros y restáurala cuando haga falta.</p>"
+        + "<button type='button' class='primary' id='btn-sync-full-export'>Descargar copia completa</button> "
+        + "<label class='muted' style='margin-left:8px'>Restaurar <input type='file' id='sync-restore-file' accept='application/json,.json'/></label>";
+      box.insertBefore(wrap, box.firstChild);
+      document.getElementById("btn-sync-full-export").onclick = downloadFullSnapshot;
+      document.getElementById("sync-restore-file").onchange = function(ev){
+        var f = ev.target.files && ev.target.files[0];
+        if (f) restoreSnapshotFile(f);
+      };
+    }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bindPersist);
+    else bindPersist();
+    setTimeout(bindPersist, 800);
+  })();
+  </script>
+
+  
+  <script>
+  (function(){
+    async function loadIdMem(){
+      var box = document.getElementById("identity-memory-box");
+      if (!box) return;
+      try {
+        var r = await fetch("/api/identity/memory");
+        var d = await r.json();
+        var p = d.portrait || {};
+        var msg = (p.narrativa || "") + "\n\n" + (p.thesis || "");
+        var m = p.memoria || {};
+        msg += "\n\nReservorio: " + (m.reservorio_docs||0) + " docs · Códice: " + (m.codex_cristales||0) + " cristales";
+        if ((m.titulos_recientes||[]).length) msg += "\nTextos: " + m.titulos_recientes.slice(0,5).join("; ");
+        box.className = "result ok";
+        box.textContent = msg;
+      } catch(e) {
+        box.className = "result warn";
+        box.textContent = "No disponible: " + e.message;
+      }
+    }
+    var b = document.getElementById("btn-identity-memory");
+    if (b) b.onclick = loadIdMem;
+    loadIdMem();
   })();
   </script>
 
