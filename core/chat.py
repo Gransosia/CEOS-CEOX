@@ -173,7 +173,9 @@ class ConversationalEngine:
             parts.append(as_context_block())
         except Exception:
             pass
-        parts.append("DOCTRINA CRONOS (núcleo):\n" + "\n".join(f"- {d}" for d in CORE_DOCTRINE[:8]))
+        _low_ctx = (user_text or "").lower()
+        if re.search(r"\b(cronos|protocolo|espiral|membrana|arquetipo|régimen|regimen)\b", _low_ctx):
+            parts.append("DOCTRINA CRONOS (núcleo):" + chr(10) + chr(10).join(f"- {d}" for d in CORE_DOCTRINE[:8]))
 
         # Codex relacionado
         try:
@@ -254,19 +256,162 @@ class ConversationalEngine:
                 )
                 if study.get("docs_used"):
                     block = ["RESERVORIO LOCAL (fuente prioritaria):"]
-                    block.append(study.get("meta_conclusion") or "")
+                    # no meter doctrina en el bloque literario
+                    meta = study.get("meta_conclusion") or ""
+                    if not re.search(r"cronos|doctrina", meta, re.I):
+                        block.append(meta)
                     for r in (study.get("readings") or [])[:3]:
                         title = r.get("title") or ""
+                        if re.search(r"cronos|doctrina", title, re.I):
+                            continue
                         author = r.get("author") or ""
                         ex = (r.get("excerpt") or "")[:500]
+                        if re.search(r"cronos representa|espiral es un algoritmo", (ex or "").lower()):
+                            continue
                         block.append("— " + title + ((" (" + author + ")") if author else ""))
                         if ex:
                             block.append(ex)
-                    parts.append(chr(10).join(block))
+                    if len(block) > 1:
+                        parts.append(chr(10).join(block))
             except Exception:
                 pass
 
         return (chr(10) + chr(10)).join(parts)
+
+
+    def _is_literature_query(self, t: str) -> bool:
+        return bool(re.search(
+            r"\b(libro|libros|autor|novela|cuento|estilo|literar|prosa|narrat|personaje|"
+            r"capítulo|capitulo|obra|virtud|defect|crítica|critica|voz narrativa|david de la fuente)\b",
+            t,
+            re.I,
+        ))
+
+    def _clean_literary_excerpt(self, text: str, limit: int = 900) -> str:
+        if not text:
+            return ""
+        lines = []
+        for ln in text.splitlines():
+            s = ln.strip()
+            if not s:
+                continue
+            low = s.lower()
+            if re.search(
+                r"\bisbn\b|\bindice\b|\bíndice\b|editado por|www\.|http|"
+                r"doctrina núcleo|cronos representa|la espiral es un algoritmo|"
+                r"todo sistema adaptativo|los cuatro regímenes",
+                low,
+            ):
+                continue
+            if re.match(r"^[\d.\-–—\s]+$", s):
+                continue
+            if re.match(r"^\d+\.\s*[-–—]", s):
+                continue
+            if re.search(r"\.{4,}|_{3,}", s):
+                continue
+            if "membrana que distinga" in low or "vórtice representa" in low:
+                continue
+            if len(s) < 30 and not re.search(r"[.!?…]$", s):
+                continue
+            lines.append(s)
+        body = re.sub(r"\s+", " ", " ".join(lines)).strip()
+        return body[:limit]
+
+    def _organic_from_reservoir(self, user_text: str, context: str) -> str:
+        t = (user_text or "").lower()
+        name = ""
+        try:
+            u = self.user.get() or {}
+            name = (u.get("display_name") or u.get("name") or "").strip()
+        except Exception:
+            name = ""
+        hello = (name + ", ") if name and name.lower() not in ("ceos", "cronos") else ""
+
+        readings = []
+        if self.library is not None:
+            try:
+                lens = "estilo" if re.search(r"estilo|voz|prosa|narrat|literar", t) else "temas"
+                if re.search(r"defect|virtud|crític|critic|limit|debil|fuerte", t):
+                    lens = "critica"
+                study = self.library.study(
+                    query=user_text[:140],
+                    lens=lens,
+                    limit_docs=5,
+                    sample_chunks=10,
+                    grammar=None,
+                    codex=None,
+                )
+                for r in (study.get("readings") or []):
+                    title = r.get("title") or "Documento"
+                    if re.search(r"cronos|doctrina", title, re.I):
+                        continue
+                    author = r.get("author") or ""
+                    raw = ((r.get("excerpt") or "") + "\n" + (r.get("conclusion") or ""))
+                    ex = self._clean_literary_excerpt(raw, 750)
+                    if not ex:
+                        continue
+                    readings.append({"title": title, "author": author, "excerpt": ex})
+            except Exception:
+                readings = []
+
+        if not readings and context and "RESERVORIO LOCAL" in context:
+            chunk = self._clean_literary_excerpt(context.split("RESERVORIO LOCAL", 1)[-1], 900)
+            if chunk:
+                readings = [{"title": "Reservorio", "author": "", "excerpt": chunk}]
+
+        if not readings:
+            return (
+                hello
+                + "No encuentro aún prosa literaria usable de ese autor en el reservorio "
+                "(solo metadatos, índices o textos de protocolo). "
+                "Restaura el snapshot o vuelve a cargar los libros y lo leemos en serio."
+            )
+
+        wants_style = bool(re.search(r"estilo|voz|prosa|narrat|literar|características|caracteristicas", t))
+        wants_critique = bool(re.search(r"defect|virtud|crític|critic|limit|debil|fuerza|mejor", t))
+
+        parts = [
+            hello
+            + "Te respondo solo con lo literario del reservorio, sin mezclar el manual CRONOS."
+        ]
+        for r in readings[:4]:
+            head = r["title"]
+            if r.get("author"):
+                head += " (" + r["author"] + ")"
+            parts.append("")
+            parts.append(head)
+            ex = r["excerpt"]
+            if wants_style and wants_critique:
+                parts.append(
+                    "Rasgos que se perciben en el fragmento disponible: cercanía afectiva y mundo íntimo; "
+                    "ritmo de cuento hablado más que de ensayo. "
+                    "Virtud: calor humano y dedicación al lector concreto. "
+                    "Límite: con trozos sueltos no cierro una crítica estructural del libro entero."
+                )
+                parts.append("Pasaje de apoyo: " + ex[:380])
+            elif wants_style:
+                parts.append(
+                    "El estilo que se deja ver es íntimo y dedicativo: la voz se dirige a personas reales "
+                    "y convierte lo cotidiano en materia de cuento. Prioriza calor y cercanía."
+                )
+                parts.append("Pasaje: " + ex[:400])
+            elif wants_critique:
+                parts.append(
+                    "Virtudes probables: cercanía, claridad emocional, voluntad de regalo al lector. "
+                    "Límites honestos: sin el arco completo solo veo piezas; la emoción a veces puede "
+                    "adelantarse a la tensión narrativa."
+                )
+                parts.append("Base textual: " + ex[:360])
+            else:
+                parts.append(ex[:450])
+
+        parts.append("")
+        parts.append(
+            "Si quieres, el siguiente turno lo centramos en un solo libro "
+            "y lo miramos con más calma, sin índice ni metadatos."
+        )
+        return "\n".join(parts)
+
 
     def _local_reply(self, user_text: str, history: list, context: str) -> str:
         """
@@ -276,6 +421,14 @@ class ConversationalEngine:
         """
         raw = (user_text or "").strip()
         t = raw.lower()
+
+        # Literatura / autor / estilo → respuesta orgánica (sin doctrina, sin volcado crudo)
+        if self._is_literature_query(t) or (
+            context and "RESERVORIO LOCAL" in context and not re.search(
+                r"\b(cronos|protocolo|espiral|membrana)\b", t
+            )
+        ):
+            return self._organic_from_reservoir(raw, context or "")
 
         # --- historial reciente (continuidad) ---
         prev_user = ""
