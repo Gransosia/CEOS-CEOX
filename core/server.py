@@ -976,7 +976,7 @@ def api_codex_expand():
 def api_llm_keys():
     """Guarda claves API en data/llm_keys.json (no se comparten por Sync)."""
     data = request.get_json(force=True) or {}
-    allowed = ["GROQ_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]
+    allowed = ["GROQ_API_KEY", "XAI_API_KEY", "GROK_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]
     keys = {k: data[k] for k in allowed if k in data and data[k]}
     if not keys:
         return jsonify({"error": "No se envió ninguna clave reconocida"}), 400

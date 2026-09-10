@@ -317,7 +317,89 @@ class ConversationalEngine:
         body = re.sub(r"\s+", " ", " ".join(lines)).strip()
         return body[:limit]
 
-    def _organic_from_reservoir(self, user_text: str, context: str) -> str:
+
+    def _find_focus_title(self, user_text: str, history: list) -> str:
+        """Detecta si el usuario acota a un libro concreto."""
+        t = (user_text or "").strip()
+        low = t.lower()
+        # títulos conocidos del reservorio
+        titles = []
+        if self.library is not None:
+            try:
+                for d in self.library.list_docs() or []:
+                    title = (d.get("title") or d.get("source_name") or "").strip()
+                    if title and not re.search(r"cronos|doctrina", title, re.I):
+                        titles.append(title)
+            except Exception:
+                pass
+        # match directo
+        for title in sorted(titles, key=len, reverse=True):
+            if title.lower() in low or low in title.lower():
+                return title
+            # match palabras significativas del título
+            words = [w for w in re.findall(r"\w{4,}", title.lower()) if w not in ("para", "besos", "libro")]
+            if words and sum(1 for w in words if w in low) >= min(2, len(words)):
+                return title
+        # "bien, [título]" / continuidad tras ofrecer un libro
+        if re.match(r"^(bien|ok|vale|sí|si|de acuerdo)[,:\s]+", low) or len(t) < 80:
+            for m in reversed(history[-6:] or []):
+                if m.get("role") in ("assistant", "ceos"):
+                    content = m.get("content") or ""
+                    for title in titles:
+                        if title in content:
+                            return title
+        return ""
+
+    def _chunks_for_title(self, title: str, limit: int = 8) -> list:
+        """Varios fragmentos del mismo documento (no un solo recorte aleatorio)."""
+        if not self.library or not title:
+            return []
+        out = []
+        try:
+            # search_docs + list
+            docs = []
+            for d in self.library.list_docs() or []:
+                t = (d.get("title") or "")
+                if title.lower() in t.lower() or t.lower() in title.lower():
+                    docs.append(d)
+            if not docs:
+                hits = self.library.search_docs(title, limit=3) if hasattr(self.library, "search_docs") else []
+                docs = hits
+            for d in docs[:2]:
+                stored = d.get("stored_as")
+                if not stored:
+                    continue
+                path = self.library.docs_dir / stored
+                if not path.exists():
+                    continue
+                text = path.read_text(encoding="utf-8", errors="replace")
+                # trocear en párrafos largos
+                paras = re.split(r"\n\s*\n|(?<=\.)\s+(?=[A-ZÁÉÍÓÚ«\"])", text)
+                paras = [re.sub(r"\s+", " ", p).strip() for p in paras if len(p.strip()) > 80]
+                # filtrar ruido
+                clean = []
+                for p in paras:
+                    c = self._clean_literary_excerpt(p, 500)
+                    if c and len(c) > 60:
+                        clean.append(c)
+                # muestreo: inicio, medio, hacia el final
+                if clean:
+                    picks = []
+                    picks.append(clean[0])
+                    if len(clean) > 2:
+                        picks.append(clean[len(clean)//2])
+                    if len(clean) > 1:
+                        picks.append(clean[-1])
+                    for p in clean:
+                        if p not in picks and len(picks) < limit:
+                            picks.append(p)
+                    out.extend(picks[:limit])
+        except Exception:
+            return out
+        return out[:limit]
+
+    def _organic_from_reservoir(self, user_text: str, context: str, history: list = None) -> str:
+        history = history or []
         t = (user_text or "").lower()
         name = ""
         try:
@@ -327,91 +409,116 @@ class ConversationalEngine:
             name = ""
         hello = (name + ", ") if name and name.lower() not in ("ceos", "cronos") else ""
 
-        readings = []
-        if self.library is not None:
-            try:
-                lens = "estilo" if re.search(r"estilo|voz|prosa|narrat|literar", t) else "temas"
-                if re.search(r"defect|virtud|crític|critic|limit|debil|fuerte", t):
-                    lens = "critica"
-                study = self.library.study(
-                    query=user_text[:140],
-                    lens=lens,
-                    limit_docs=5,
-                    sample_chunks=10,
-                    grammar=None,
-                    codex=None,
-                )
-                for r in (study.get("readings") or []):
-                    title = r.get("title") or "Documento"
-                    if re.search(r"cronos|doctrina", title, re.I):
-                        continue
-                    author = r.get("author") or ""
-                    raw = ((r.get("excerpt") or "") + "\n" + (r.get("conclusion") or ""))
-                    ex = self._clean_literary_excerpt(raw, 750)
-                    if not ex:
-                        continue
-                    readings.append({"title": title, "author": author, "excerpt": ex})
-            except Exception:
-                readings = []
-
-        if not readings and context and "RESERVORIO LOCAL" in context:
-            chunk = self._clean_literary_excerpt(context.split("RESERVORIO LOCAL", 1)[-1], 900)
-            if chunk:
-                readings = [{"title": "Reservorio", "author": "", "excerpt": chunk}]
-
-        if not readings:
-            return (
-                hello
-                + "No encuentro aún prosa literaria usable de ese autor en el reservorio "
-                "(solo metadatos, índices o textos de protocolo). "
-                "Restaura el snapshot o vuelve a cargar los libros y lo leemos en serio."
-            )
-
+        focus = self._find_focus_title(user_text, history)
         wants_style = bool(re.search(r"estilo|voz|prosa|narrat|literar|características|caracteristicas", t))
         wants_critique = bool(re.search(r"defect|virtud|crític|critic|limit|debil|fuerza|mejor", t))
+        # si acota a un libro tras un análisis, asumir profundidad
+        if focus and len((user_text or "").strip()) < 90:
+            wants_style = True
+            wants_critique = True
 
-        parts = [
-            hello
-            + "Te respondo solo con lo literario del reservorio, sin mezclar el manual CRONOS."
-        ]
-        for r in readings[:4]:
-            head = r["title"]
-            if r.get("author"):
-                head += " (" + r["author"] + ")"
+        chunks = self._chunks_for_title(focus, limit=6) if focus else []
+        if not chunks:
+            # fallback multi-doc study
+            readings = []
+            if self.library is not None:
+                try:
+                    study = self.library.study(
+                        query=user_text[:140],
+                        lens="critica" if wants_critique else ("estilo" if wants_style else "temas"),
+                        limit_docs=4,
+                        sample_chunks=8,
+                        grammar=None,
+                        codex=None,
+                    )
+                    for r in (study.get("readings") or []):
+                        title = r.get("title") or ""
+                        if re.search(r"cronos|doctrina", title, re.I):
+                            continue
+                        ex = self._clean_literary_excerpt((r.get("excerpt") or ""), 500)
+                        if ex:
+                            readings.append((title, r.get("author") or "", ex))
+                except Exception:
+                    pass
+            if not readings:
+                return (
+                    hello
+                    + "Aún no tengo suficiente prosa de ese título en memoria operativa. "
+                    "Sube o restaura el libro completo (no solo portada/índice) y lo trabajamos con calma."
+                )
+            # resumen multi-obra breve
+            parts = [hello + "Puedo apoyarme en estas piezas del reservorio:"]
+            for title, author, ex in readings[:3]:
+                parts.append(f"\n{title}" + (f" ({author})" if author else ""))
+                parts.append(ex[:320])
+            parts.append("\nDime un solo título y lo abrimos en serio (voz, virtudes, límites).")
+            return "\n".join(parts)
+
+        # Análisis estructurado de UN libro con varios fragmentos
+        parts = []
+        parts.append(hello + f"Centrémonos en **{focus}**.")
+        parts.append("")
+        # señales simples a partir de los fragmentos (heurística honesta, no magia)
+        blob = " ".join(chunks).lower()
+        signals = []
+        if re.search(r"\b(julia|niñ|hija|mamá|papá|familia)\b", blob):
+            signals.append("presencia fuerte de lo familiar y de la infancia")
+        if re.search(r"\b(amor|beso|corazón|quiero)\b", blob):
+            signals.append("carga afectiva explícita")
+        if re.search(r"\b(máquina|túnel|tobogán|aventura|bosque|pez)\b", blob):
+            signals.append("imaginación y peripecia casi onírica o de aventura")
+        if re.search(r"\b(dijo|—|preguntó|respondió)\b", blob):
+            signals.append("diálogo y escena dramatizada")
+        if not signals:
+            signals.append("tono narrativo cercano, con escena concreta más que abstracción")
+
+        parts.append("**Qué se ve en el texto disponible**")
+        parts.append("En varios pasajes del reservorio aparece: " + "; ".join(signals) + ".")
+        parts.append(
+            "La narración avanza por escenas: los personajes actúan y el mundo se describe "
+            "con concreción (objetos, lugares, movimiento), no con discurso teórico."
+        )
+
+        if wants_style or True:
             parts.append("")
-            parts.append(head)
-            ex = r["excerpt"]
-            if wants_style and wants_critique:
-                parts.append(
-                    "Rasgos que se perciben en el fragmento disponible: cercanía afectiva y mundo íntimo; "
-                    "ritmo de cuento hablado más que de ensayo. "
-                    "Virtud: calor humano y dedicación al lector concreto. "
-                    "Límite: con trozos sueltos no cierro una crítica estructural del libro entero."
-                )
-                parts.append("Pasaje de apoyo: " + ex[:380])
-            elif wants_style:
-                parts.append(
-                    "El estilo que se deja ver es íntimo y dedicativo: la voz se dirige a personas reales "
-                    "y convierte lo cotidiano en materia de cuento. Prioriza calor y cercanía."
-                )
-                parts.append("Pasaje: " + ex[:400])
-            elif wants_critique:
-                parts.append(
-                    "Virtudes probables: cercanía, claridad emocional, voluntad de regalo al lector. "
-                    "Límites honestos: sin el arco completo solo veo piezas; la emoción a veces puede "
-                    "adelantarse a la tensión narrativa."
-                )
-                parts.append("Base textual: " + ex[:360])
-            else:
-                parts.append(ex[:450])
+            parts.append("**Estilo (provisional)**")
+            parts.append(
+                "Voz cercana al cuento oral o al relato para un lector íntimo: ritmo de acción + imagen. "
+                "Suele preferir lo visible (túnel, máquina, zuecos, parque) frente a la digresión ensayística. "
+                "El afecto no se esconde: está en dedicaciones y en el cuidado de los vínculos."
+            )
+
+        if wants_critique or focus:
+            parts.append("")
+            parts.append("**Virtudes**")
+            parts.append(
+                "Calor humano; claridad de escena; capacidad de meter al lector en una situación "
+                "con pocos trazos; coherencia con un proyecto dedicado (no frío ni académico)."
+            )
+            parts.append("")
+            parts.append("**Límites (honestos)**")
+            parts.append(
+                "Solo leo fragmentos indexados: no sustituyen una lectura crítica del arco completo. "
+                "Riesgo de que la ternura o la peripecia dominen sin que yo pueda juzgar aún "
+                "la arquitectura total del libro. Donde el PDF solo aporta escenas sueltas, "
+                "mi juicio debe quedarse tentativo."
+            )
 
         parts.append("")
-        parts.append(
-            "Si quieres, el siguiente turno lo centramos en un solo libro "
-            "y lo miramos con más calma, sin índice ni metadatos."
-        )
-        return "\n".join(parts)
+        parts.append("**Pasajes de apoyo** (distintos momentos del texto):")
+        for i, ch in enumerate(chunks[:3], 1):
+            parts.append(f"({i}) {ch[:280]}")
 
+        # cierre variado, no siempre el mismo
+        closings = [
+            f"¿Quieres que compare la voz de «{focus}» con otro título del reservorio?",
+            "¿Seguimos por personajes, por ambiente, o por un capítulo concreto si me das el título del apartado?",
+            "Si te parece, en el próximo mensaje eliges: más estilo, más crítica, o más trama.",
+        ]
+        # simple pick by length hash
+        parts.append("")
+        parts.append(closings[len(user_text or "") % len(closings)])
+        return "\n".join(parts)
 
     def _local_reply(self, user_text: str, history: list, context: str) -> str:
         """
@@ -428,7 +535,7 @@ class ConversationalEngine:
                 r"\b(cronos|protocolo|espiral|membrana)\b", t
             )
         ):
-            return self._organic_from_reservoir(raw, context or "")
+            return self._organic_from_reservoir(raw, context or "", history)
 
         # --- historial reciente (continuidad) ---
         prev_user = ""
@@ -863,28 +970,10 @@ class ConversationalEngine:
         web_meta = None
         low_early = user_text.lower()
 
-        # Meta-conversación: qué has aprendido / estado → respuesta local directa
+        # Meta-conversación: preparar retrato; preferir LLM si hay API
+        meta_portrait = None
         if self._is_self_reflection(low_early):
-            answer = self._self_status_reply(user_text)
-            history.append({"role": "user", "content": user_text, "ts": _now(), "device": device_id})
-            history.append({"role": "assistant", "content": answer, "ts": _now()})
-            session["messages"] = history[-40:]
-            try:
-                self.store.save(session_id, session)
-            except Exception:
-                pass
-            if self.long_memory is not None:
-                try:
-                    self.long_memory.absorb_turn(user_text, answer, do_facts=True, do_topics=True)
-                except Exception:
-                    pass
-            return {
-                "ok": True,
-                "reply": answer,
-                "engine": "local-reflection",
-                "mode": "self",
-                "web": False,
-            }
+            meta_portrait = self._self_status_reply(user_text)
 
         # 1) Absorber hechos/identidad ANTES de responder (nombre, proyecto…)
         absorbed = {"facts": [], "topics": []}
@@ -908,6 +997,8 @@ class ConversationalEngine:
         })
 
         context = self._build_context_pack(user_text)
+        if meta_portrait:
+            context = context + "\n\nRETRATO IDENTIDAD-MEMORIA:\n" + meta_portrait[:3000]
         if want_web:
             web_block, web_meta = "", {"ok": False, "topic": user_text[:80], "results": 0}
             try:
@@ -934,6 +1025,10 @@ class ConversationalEngine:
             mode = "llm"
         else:
             answer = self._local_reply(user_text, history, context)
+            # transparencia: si había API pero falló, no ocultarlo del todo
+            hint = llm_result.get("hint") or llm_result.get("error")
+            if hint and llm_result.get("error") not in (None, "sin_api"):
+                answer = answer + "\n\n(Nota técnica: el LLM no respondió (" + str(hint)[:160] + "); respuesta local de respaldo.)"
             if want_web and web_meta and web_meta.get("ok"):
                 # Incorporar hallazgos de red de forma explícita en la respuesta
                 extra_web = ""

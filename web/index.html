@@ -168,6 +168,17 @@
       </section>
 
 <section id="view-home" class="view">
+
+        <div class="card" id="llm-setup-card">
+          <h2>Motor de redacción (API gratuita)</h2>
+          <p class="muted">Sin clave, CEOS solo usa plantillas locales. Con <strong>Groq gratis</strong> razona de verdad sobre tu reservorio. Solo hace falta configurar la clave <em>una vez</em> en Render (Environment).</p>
+          <p class="muted">1) Entra en <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a> → Create API Key<br>
+          2) En Render → Environment → añade <code>GROQ_API_KEY</code> = esa clave → Save<br>
+          3) Espera el deploy y pulsa «Comprobar API»</p>
+          <div id="llm-status-box" class="result">Comprobando…</div>
+          <button type="button" class="primary" id="btn-llm-check" style="margin-top:8px">Comprobar API</button>
+        </div>
+
         <div class="card" id="evolution-scale-card">
           <h2>Escala de evolución</h2>
           <p class="muted">Por defecto: evolución desde el <strong>origen</strong> (primera medición) hasta <strong>ahora</strong>. También puedes elegir otras fechas. Cristales y mapas del códice son el núcleo de esta memoria-poliedro.</p>

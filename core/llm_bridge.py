@@ -3,9 +3,10 @@ Puente LLM opcional — redacción profunda.
 
 Proveedores (en orden de preferencia si hay varias claves):
   1. Groq          — GRATIS (cuota generosa)     GROQ_API_KEY
-  2. Google Gemini — GRATIS (cuota diaria)       GEMINI_API_KEY
-  3. Anthropic     — de pago                     ANTHROPIC_API_KEY
-  4. OpenAI        — de pago                     OPENAI_API_KEY
+  2. xAI Grok      — según plan xAI              XAI_API_KEY
+  3. Google Gemini — GRATIS (cuota diaria)       GEMINI_API_KEY
+  4. Anthropic     — de pago                     ANTHROPIC_API_KEY
+  5. OpenAI        — de pago                     OPENAI_API_KEY
 
 Las claves se leen de:
   - variables de entorno, o
@@ -60,6 +61,8 @@ def available() -> dict:
     providers = []
     if _key("GROQ_API_KEY"):
         providers.append("groq")
+    if _key("XAI_API_KEY") or _key("GROK_API_KEY"):
+        providers.append("xai")
     if _key("GEMINI_API_KEY"):
         providers.append("gemini")
     if _key("ANTHROPIC_API_KEY"):
@@ -73,6 +76,7 @@ def available() -> dict:
         "hint": (
             "Opciones GRATUITAS:\n"
             "  · Groq:   https://console.groq.com  → GROQ_API_KEY\n"
+            "  · xAI:    https://console.x.ai      → XAI_API_KEY\n"
             "  · Gemini: https://aistudio.google.com/apikey → GEMINI_API_KEY\n"
             f"Guarda las claves en: {_KEYS_FILE}\n"
             'Formato: {"GROQ_API_KEY": "gsk_...", "GEMINI_API_KEY": "AIza..."}\n'
@@ -253,23 +257,22 @@ def build_context(fragments: list, doctrine: list = None, web_points: list = Non
 
 # ---------- Chat multi-turno (modo conversacional) ----------
 
-SYSTEM_CHAT = """Eres CEOS, el Motor CRONOS-Espiral en modo conversacional.
-No eres un asistente genérico.
+SYSTEM_CHAT = """Eres CEOS, mentor-memoria en español. Conversas con naturalidad y profundidad.
+No eres un buscador ni un asistente genérico sin memoria.
 
 Identidad y tono:
-- Español claro, directo y humano.
-- Mentor del protocolo CRONOS: preciso, operativo, sin adornos vacíos.
-- Mensajes de conversación real: relativamente cortos salvo que pidan profundidad.
-- Puedes hacer una pregunta de seguimiento cuando ayude.
-- Si el usuario saluda o habla en casual, respondes con naturalidad y luego ofreces valor.
-- No empieces con "Como CEOS..." ni con disculpas innecesarias.
+- Español claro, humano, de interlocutor real.
+- Prioriza el RESERVORIO y el contexto interno del motor cuando existan.
+- No mezcles doctrina CRONOS salvo que el usuario pregunte por el protocolo.
+- En literatura: estilo, temas, virtudes y límites; apóyate en los fragmentos del contexto.
+- Si el contexto es fragmentario, dilo y ofrece una lectura provisional.
+- Pregunta de seguimiento breve cuando ayude.
+- No inventes libros, tramas ni fuentes que no estén en el contexto.
 
 Reglas:
-1. Usa el contexto interno que se te da (doctrina, Codex, casos, perfil).
-2. Vocabulario CRONOS cuando aplique (Cronos/Vórtice, regímenes, operaciones, Espiral).
-3. Si algo no está en el contexto y no es conocimiento general seguro, dilo.
-4. No inventes citas ni fuentes.
-5. Prioriza el diálogo frente a documentos largos.
+1. El contexto interno manda sobre inventar.
+2. Diálogo antes que informe burocrático.
+3. Honestidad de límites.
 """
 
 
@@ -301,6 +304,8 @@ def chat_completion(messages: list, context: str = "", max_tokens: int = 1200) -
     order = []
     if "groq" in status["providers"]:
         order.append(("groq", _chat_groq))
+    if "xai" in status["providers"]:
+        order.append(("xai", _chat_xai))
     if "gemini" in status["providers"]:
         order.append(("gemini", _chat_gemini))
     if "openai" in status["providers"]:
@@ -327,19 +332,44 @@ def chat_completion(messages: list, context: str = "", max_tokens: int = 1200) -
 
 def _chat_groq(messages: list, max_tokens: int = 1200) -> str:
     key = _key("GROQ_API_KEY")
-    model = os.environ.get("CEOS_GROQ_MODEL", "llama-3.3-70b-versatile")
-    body = {
-        "model": model,
-        "messages": messages,
-        "max_tokens": max_tokens,
-        "temperature": 0.55,
-    }
-    data = _post_json(
-        "https://api.groq.com/openai/v1/chat/completions",
-        body,
-        {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-    )
-    return data["choices"][0]["message"]["content"]
+    if not key:
+        raise RuntimeError("sin GROQ_API_KEY")
+    preferred = os.environ.get("CEOS_GROQ_MODEL", "").strip()
+    models = []
+    if preferred:
+        models.append(preferred)
+    for m in (
+        "llama-3.3-70b-versatile",
+        "llama-3.1-70b-versatile",
+        "llama-3.1-8b-instant",
+        "gemma2-9b-it",
+        "mixtral-8x7b-32768",
+    ):
+        if m not in models:
+            models.append(m)
+    last_err = None
+    for model in models:
+        body = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": 0.55,
+        }
+        try:
+            data = _post_json(
+                "https://api.groq.com/openai/v1/chat/completions",
+                body,
+                {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                timeout=60,
+            )
+            content = (data.get("choices") or [{}])[0].get("message", {}).get("content")
+            if content and str(content).strip():
+                return str(content).strip()
+            last_err = RuntimeError(f"groq vacío con modelo {model}")
+        except Exception as e:
+            last_err = e
+            continue
+    raise RuntimeError(f"groq falló: {last_err}")
 
 
 def _chat_openai(messages: list, max_tokens: int = 1200) -> str:
@@ -386,6 +416,40 @@ def _chat_anthropic(messages: list, max_tokens: int = 1200) -> str:
     )
     return "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
 
+
+
+def _chat_xai(messages: list, max_tokens: int = 1200) -> str:
+    """xAI Grok API (compatible estilo OpenAI)."""
+    key = _key("XAI_API_KEY") or _key("GROK_API_KEY")
+    if not key:
+        raise RuntimeError("sin XAI_API_KEY")
+    model = os.environ.get("CEOS_XAI_MODEL", "grok-2-latest")
+    url = os.environ.get("CEOS_XAI_URL", "https://api.x.ai/v1/chat/completions")
+    # Normalizar roles
+    msgs = []
+    for m in messages:
+        role = m.get("role")
+        if role in ("system", "user", "assistant"):
+            msgs.append({"role": role, "content": m.get("content") or ""})
+    body = {
+        "model": model,
+        "messages": msgs,
+        "max_tokens": max_tokens,
+        "temperature": 0.6,
+    }
+    data = _post_json(
+        url,
+        body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {key}",
+        },
+        timeout=90,
+    )
+    choices = data.get("choices") or []
+    if not choices:
+        raise RuntimeError("xai sin choices")
+    return (choices[0].get("message") or {}).get("content") or ""
 
 def _chat_gemini(messages: list, max_tokens: int = 1200) -> str:
     key = _key("GEMINI_API_KEY")
