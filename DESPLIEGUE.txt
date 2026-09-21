@@ -1,0 +1,50 @@
+CEOS — paquete para desplegar en Render (19-09-2026)
+=====================================================
+
+Repositorio: https://github.com/Gransosia/CEOS-CEOX
+Servicio:    CEOS-CEOX-3 → https://ceos-ceox-3.onrender.com/
+
+CÓMO SUBIR (opción A — más simple)
+----------------------------------
+1. Abre el repo en GitHub.
+2. Sube / reemplaza estas rutas (arrastrar archivos o "Upload files"):
+
+   core/hub_intents.py          ← NUEVO (obligatorio)
+   core/chat.py                 ← actualizado
+   core/llm_bridge.py           ← actualizado
+   core/persist.py              ← si no está
+   core/identity_memory.py      ← si no está
+   web/index.html               ← hub en el chat
+   web/app.js                   ← botones subir/nombre
+   web/styles.css               ← estilos hub
+
+3. Commit en la rama main.
+4. Render redespliega solo (espera Live).
+5. Ctrl+F5 en https://ceos-ceox-3.onrender.com/
+
+CÓMO SUBIR (opción B — carpeta completa)
+----------------------------------------
+Sube todo el contenido de esta carpeta PARA_GITHUB a la raíz del repo
+(respetando Dockerfile, wsgi.py, requirements.txt, core/, web/).
+
+DESPUÉS DEL DEPLOY
+------------------
+1. Comprueba: https://ceos-ceox-3.onrender.com/api/llm/status
+   Debe decir "available": true
+
+2. Si el chat muestra error 403 de Groq:
+   - console.groq.com → nueva API Key
+   - Render → Environment → GROQ_API_KEY = gsk_...
+   - Save (redeploy)
+
+3. En Chat · Centro:
+   - Escribe tu nombre o usa "Guardar nombre"
+   - 📎 Subir docs
+   - Sync → Descargar copia completa
+
+PRUEBAS RÁPIDAS
+---------------
+· "Me llamo David"           → debe guardar identidad (no hablar de libros)
+· "Qué hay en el reservorio" → lista docs o "vacío"
+· "Qué puedes hacer"         → guía de uso, NO doctrina CRONOS
+· Pregunta normal            → idealmente engine groq (si la clave es válida)
