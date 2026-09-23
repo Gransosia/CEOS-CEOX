@@ -76,15 +76,14 @@ def match_help_capabilities(text: str) -> bool:
 
 def help_text() -> str:
     return (
-        "Puedes hacer casi todo **desde este chat**, sin cambiar de pestaña:\n\n"
-        "· **Identificarte:** escribe `Me llamo David` (o usa el campo «Tu nombre» arriba).\n"
-        "· **Subir documentos:** el clip 📎 junto al mensaje, o el botón «Subir docs».\n"
-        "· **Informe / investigación:** `Investiga astroteología` o `Informe sobre mi estilo literario`.\n"
-        "· **Ver reservorio:** `Qué hay en el reservorio` o `Lista mis libros`.\n"
-        "· **Memoria / evolución:** `Qué has aprendido` o `Quiénes somos`.\n"
-        "· **Conversar** sobre tus textos: pregunta con naturalidad por estilo, temas, personajes…\n\n"
-        "Las otras pestañas (Coaching, Idiomas, Sync…) son **opcionales** para modos especializados. "
-        "El centro de CEOS es esta conversación."
+        "Operativa simple — casi todo desde este **Chat**:\n\n"
+        "1. **Nombre:** `Me llamo David`\n"
+        "2. **Subir libros:** 📎 o «Subir docs» (varias tandas se acumulan)\n"
+        "3. **Comprobar:** `Qué hay en el reservorio`\n"
+        "4. **Aprender / analizar:** habla en naturalidad o `Investiga …`\n"
+        "5. **No perder memoria (Render free):** Sync → Descargar copia completa\n\n"
+        "Límites prácticos: ~40 MB por archivo; muchos archivos en lotes. "
+        "Maestro tiene el mismo subidor. Coaching e Idiomas son opcionales."
     )
 
 

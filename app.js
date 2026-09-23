@@ -16,11 +16,22 @@ async function api(path, opts = {}) {
     opts.headers || {}
   );
   const res = await fetch(path, { ...opts, headers });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || res.statusText);
+  const text = await res.text();
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = {};
   }
-  return res.json();
+  if (!res.ok) {
+    const msg =
+      (data && (data.error || data.reply)) ||
+      (text && text.indexOf("<") === 0 ? "Error " + res.status + " del servidor" : text.slice(0, 120)) ||
+      res.statusText ||
+      String(res.status);
+    throw new Error(msg);
+  }
+  return data;
 }
 
 // ---------- Tabs + cambio por voz ----------
@@ -286,8 +297,12 @@ async function sendChatMessage(text) {
     setChatStatus(statusMsg);
   } catch (e) {
     setChatTyping(false);
-    appendChatBubble("assistant", "No pude responder: " + (e.message || e));
-    setChatStatus("Error de conexión");
+    appendChatBubble(
+      "assistant",
+      "No pude responder: " + (e.message || e) +
+        "\n\nSi ves Error 500, hay que redesplegar el backend (core/server.py + core/chat.py). Recarga tras el deploy."
+    );
+    setChatStatus("Error");
   } finally {
     chatBusy = false;
     if (sendBtn) sendBtn.disabled = false;
@@ -1068,6 +1083,166 @@ document.getElementById("btn-save-keys").addEventListener("click", async () => {
 });
 
 
+/** Límites prácticos (Render free + Gunicorn 120s) */
+const RESERVOIR_LIMITS = {
+  maxFilesPerRequest: 20,
+  maxFileBytes: 40 * 1024 * 1024, // 40 MB por archivo
+  maxBatchBytes: 80 * 1024 * 1024, // 80 MB por tanda HTTP
+  timeoutMs: 180000,
+};
+
+/**
+ * Sube archivos al reservorio de forma acumulativa.
+ * Varias tandas (hoy, mañana…) se SUMAN; no sustituyen.
+ * Parte en lotes para no saturar el plan free.
+ */
+async function uploadToReservoir(fileList, opts = {}) {
+  const onProgress = opts.onProgress || (() => {});
+  const author = opts.author || "";
+  const tags = opts.tags || "";
+  const all = Array.from(fileList || []);
+  const lines = [];
+  let okN = 0;
+  let lastStats = null;
+  const rejected = [];
+
+  // Filtrar por tamaño
+  const files = [];
+  for (const f of all) {
+    if (f.size > RESERVOIR_LIMITS.maxFileBytes) {
+      rejected.push(
+        "✗ " + f.name + ": supera " + Math.round(RESERVOIR_LIMITS.maxFileBytes / 1024 / 1024) + " MB (límite práctico)"
+      );
+    } else {
+      files.push(f);
+    }
+  }
+  lines.push(...rejected);
+
+  // Partir en lotes por número y peso
+  const batches = [];
+  let cur = [];
+  let curBytes = 0;
+  for (const f of files) {
+    if (
+      cur.length >= RESERVOIR_LIMITS.maxFilesPerRequest ||
+      (curBytes + f.size > RESERVOIR_LIMITS.maxBatchBytes && cur.length > 0)
+    ) {
+      batches.push(cur);
+      cur = [];
+      curBytes = 0;
+    }
+    cur.push(f);
+    curBytes += f.size;
+  }
+  if (cur.length) batches.push(cur);
+
+  let done = 0;
+  for (let b = 0; b < batches.length; b++) {
+    const batch = batches[b];
+    onProgress(
+      "Tanda " + (b + 1) + "/" + batches.length + " · " + batch.length + " archivo(s)…",
+      lines
+    );
+    const fd = new FormData();
+    if (author) fd.append("author", author);
+    if (tags) fd.append("tags", tags);
+    batch.forEach((file) => fd.append("file", file, file.name));
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), RESERVOIR_LIMITS.timeoutMs);
+      const res = await fetch("/api/mentor/ingest/file", {
+        method: "POST",
+        headers: { "X-Device-Id": getDeviceId() },
+        body: fd,
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      const data = await res.json().catch(() => ({}));
+      lastStats = data.library_stats || lastStats;
+      const results = data.results || [];
+      if (results.length) {
+        results.forEach((r) => {
+          if (r.status === "ok") {
+            okN++;
+            if (r.kind === "zip") lines.push("✓ ZIP " + (r.file || "?") + ": " + (r.ingested || 0) + " docs");
+            else lines.push("✓ " + (r.file || "?") + ": " + (r.chunks || 0) + " trozos");
+          } else {
+            lines.push("✗ " + (r.file || "?") + ": " + (r.error || "error"));
+          }
+        });
+      } else if (data.ok === false) {
+        // Fallback: subir de uno en uno este lote
+        for (const file of batch) {
+          onProgress("Uno a uno: " + file.name, lines);
+          const fd1 = new FormData();
+          if (author) fd1.append("author", author);
+          if (tags) fd1.append("tags", tags);
+          fd1.append("file", file, file.name);
+          try {
+            const r1 = await fetch("/api/mentor/ingest/file", {
+              method: "POST",
+              headers: { "X-Device-Id": getDeviceId() },
+              body: fd1,
+            });
+            const d1 = await r1.json().catch(() => ({}));
+            lastStats = d1.library_stats || lastStats;
+            const rr = (d1.results && d1.results[0]) || {};
+            if (d1.ok || rr.status === "ok") {
+              okN++;
+              lines.push("✓ " + file.name + " (" + (rr.chunks || 0) + " trozos)");
+            } else {
+              lines.push("✗ " + file.name + ": " + (rr.error || d1.error || r1.status));
+            }
+          } catch (e2) {
+            lines.push("✗ " + file.name + ": " + e2.message);
+          }
+        }
+      }
+    } catch (e) {
+      // lote falló → uno a uno
+      for (const file of batch) {
+        onProgress("Reintento: " + file.name, lines);
+        const fd1 = new FormData();
+        if (author) fd1.append("author", author);
+        if (tags) fd1.append("tags", tags);
+        fd1.append("file", file, file.name);
+        try {
+          const r1 = await fetch("/api/mentor/ingest/file", {
+            method: "POST",
+            headers: { "X-Device-Id": getDeviceId() },
+            body: fd1,
+          });
+          const d1 = await r1.json().catch(() => ({}));
+          lastStats = d1.library_stats || lastStats;
+          const rr = (d1.results && d1.results[0]) || {};
+          if (d1.ok || rr.status === "ok") {
+            okN++;
+            lines.push("✓ " + file.name);
+          } else {
+            lines.push("✗ " + file.name + ": " + (rr.error || d1.error || "error"));
+          }
+        } catch (e2) {
+          lines.push(
+            "✗ " + file.name + ": " + (e2.name === "AbortError" ? "tiempo agotado" : e2.message)
+          );
+        }
+      }
+    }
+    done += batch.length;
+    onProgress("Progreso " + done + "/" + files.length, lines);
+  }
+
+  const total = lastStats && lastStats.docs != null ? lastStats.docs : null;
+  const summary =
+    "Completado: " + okN + "/" + all.length +
+    (total != null ? " · Reservorio total: " + total + " documento(s)" : "") +
+    "\n" + lines.join("\n") +
+    "\n\nCada subida se SUMA a la anterior. Puedes repetir cuando quieras." +
+    "\nImportante en Render free: Sync → Descargar copia completa para no perder el reservorio.";
+  return { okN, total, lines, summary, lastStats, attempted: all.length };
+}
+
 document.getElementById("btn-upload")?.addEventListener("click", async () => {
   const input = document.getElementById("upload-files");
   const box = document.getElementById("upload-result");
@@ -1080,51 +1255,33 @@ document.getElementById("btn-upload")?.addEventListener("click", async () => {
   const tags = document.getElementById("upload-tags")?.value || "";
   box.classList.remove("hidden");
   box.className = "result";
-  const lines = [];
-  let okN = 0;
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    box.textContent = `Subiendo ${i + 1}/${files.length}: ${file.name}…
-` + lines.join("
-");
-    const fd = new FormData();
-    if (author) fd.append("author", author);
-    if (tags) fd.append("tags", tags);
-    fd.append("light", "1");
-    fd.append("file", file, file.name);
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 180000);
-      const res = await fetch("/api/mentor/ingest/file", {
-        method: "POST",
-        headers: { "X-Device-Id": getDeviceId() },
-        body: fd,
-        signal: ctrl.signal,
-      });
-      clearTimeout(timer);
-      const data = await res.json().catch(() => ({}));
-      const r = (data.results && data.results[0]) || {};
-      if (res.ok && (data.ok || r.status === "ok")) {
-        okN++;
-        if (r.kind === "zip") lines.push(`✓ ZIP ${file.name}: ${r.ingested || 0} docs`);
-        else lines.push(`✓ ${file.name}: ${r.chunks || 0} trozos, ${r.chars || 0} caracteres`);
-        if (data.library_stats) {
-          const st = document.getElementById("library-stats");
-          if (st) st.textContent = `Biblioteca: ${data.library_stats.docs} docs · ${data.library_stats.chars} caracteres · ${data.library_stats.media} medios`;
-        }
-      } else {
-        lines.push(`✗ ${file.name}: ${r.error || data.error || res.statusText || "error"}`);
-      }
-    } catch (e) {
-      lines.push(`✗ ${file.name}: ${e.name === "AbortError" ? "tiempo agotado" : e.message}`);
+  box.textContent = "Preparando subida de " + files.length + " archivo(s)…";
+  const result = await uploadToReservoir(files, {
+    author,
+    tags,
+    onProgress: (msg, lines) => {
+      box.textContent = msg + "\n" + (lines || []).slice(-12).join("\n");
+    },
+  });
+  box.className = result.okN > 0 ? "result ok" : "result warn";
+  box.textContent = result.summary;
+  if (result.lastStats) {
+    const st = document.getElementById("library-stats");
+    if (st) {
+      st.textContent =
+        "Biblioteca: " +
+        result.lastStats.docs +
+        " docs · " +
+        result.lastStats.chars +
+        " caracteres · " +
+        (result.lastStats.media || 0) +
+        " medios";
     }
   }
-  box.className = okN > 0 ? "result ok" : "result warn";
-  box.textContent = `Completado: ${okN}/${files.length} archivos cargados.
-` + lines.join("
-");
-  if (okN > 0) input.value = "";
-  try { refreshMaestro(); } catch (e) {}
+  if (result.okN > 0) input.value = "";
+  try {
+    refreshMaestro();
+  } catch (e) {}
 });
 
 
@@ -1818,40 +1975,22 @@ async function saveChatName() {
 async function uploadFilesFromChat(fileList) {
   const files = Array.from(fileList || []);
   if (!files.length) return;
-  setHubStatus("Subiendo " + files.length + " archivo(s)…");
-  const author = (document.getElementById("chat-name-input") || {}).value || "";
-  let okN = 0;
-  const lines = [];
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    setHubStatus("Subiendo " + (i + 1) + "/" + files.length + ": " + file.name);
-    const fd = new FormData();
-    if (author) fd.append("author", author);
-    fd.append("light", "1");
-    fd.append("file", file, file.name);
-    try {
-      const res = await fetch("/api/mentor/ingest/file", {
-        method: "POST",
-        headers: { "X-Device-Id": getDeviceId() },
-        body: fd,
-      });
-      const data = await res.json().catch(() => ({}));
-      const r = (data.results && data.results[0]) || {};
-      if (data.ok || r.status === "ok") {
-        okN++;
-        lines.push("✓ " + file.name + " (" + (r.chunks || 0) + " trozos)");
-      } else {
-        lines.push("✗ " + file.name + ": " + (r.error || data.error || res.status));
-      }
-    } catch (e) {
-      lines.push("✗ " + file.name + ": " + e.message);
-    }
-  }
-  const summary =
-    "Completado: " + okN + "/" + files.length + "\n" + lines.join("\n");
-  setHubStatus(okN ? "Listo: " + okN + " en reservorio" : "Falló la subida");
+  const author =
+    (document.getElementById("chat-name-input") || {}).value ||
+    (document.getElementById("upload-author") || {}).value ||
+    "";
+  setHubStatus("Subiendo " + files.length + " archivo(s) al reservorio…");
+  const result = await uploadToReservoir(files, {
+    author,
+    onProgress: (msg) => setHubStatus(msg),
+  });
+  setHubStatus(
+    result.okN
+      ? "Listo +" + result.okN + (result.total != null ? " · total " + result.total : "")
+      : "Falló la subida"
+  );
   if (typeof appendChatBubble === "function") {
-    appendChatBubble("assistant", summary, "hub-upload");
+    appendChatBubble("assistant", result.summary, "hub-upload");
   }
   const input = document.getElementById("chat-file-input");
   if (input) input.value = "";

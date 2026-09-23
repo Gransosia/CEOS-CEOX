@@ -803,7 +803,11 @@ def api_mentor_ingest_file():
         allowed = set(TEXT_SUFFIXES) | set(MEDIA_SUFFIXES) | set(ARCHIVE_SUFFIXES)
         results = []
 
-        for i, f in enumerate(files[:100]):
+        # Acumulativo: cada archivo se suma al índice; no se borra lo previo.
+        # Límite práctico por petición (Render free / timeout Gunicorn).
+        max_per_req = 40
+        skipped = max(0, len(files) - max_per_req)
+        for i, f in enumerate(files[:max_per_req]):
             original = (getattr(f, "filename", None) or f"file{i}.txt")
             suffix = Path(original).suffix.lower() or ".txt"
             if suffix not in allowed:
@@ -816,6 +820,18 @@ def api_mentor_ingest_file():
             except Exception as e:
                 results.append({"file": original, "status": "error", "error": f"save: {e}"})
                 continue
+            # Tope blando por archivo (~45 MB) para no colgar el worker
+            try:
+                if dest.stat().st_size > 45 * 1024 * 1024:
+                    dest.unlink(missing_ok=True)
+                    results.append({
+                        "file": original,
+                        "status": "error",
+                        "error": "Archivo > 45 MB: divide el PDF o sube por partes",
+                    })
+                    continue
+            except Exception:
+                pass
             try:
                 if suffix in ARCHIVE_SUFFIXES:
                     batch = lib.ingest_archive(dest, grammar=grm, author=author, tags=tags, max_files=100)
@@ -850,6 +866,12 @@ def api_mentor_ingest_file():
             stats = lib.stats()
         except Exception:
             stats = {}
+        if skipped:
+            results.append({
+                "file": "(lote)",
+                "status": "info",
+                "error": f"{skipped} archivo(s) quedan para otra petición; vuelve a subirlos (se sumarán al reservorio)",
+            })
         # auto-backup local en disco del servidor
         try:
             from .persist import build_snapshot
@@ -870,7 +892,18 @@ def api_mentor_ingest_file():
             )
         except Exception:
             pass
-        return jsonify({"ok": ok_n > 0, "uploaded": ok_n, "total": len(results), "results": results, "library_stats": stats, "data_dir": str(DATA_DIR), "backup": "last_full_snapshot.json"})
+        return jsonify({
+            "ok": ok_n > 0,
+            "uploaded": ok_n,
+            "total": len(results),
+            "results": results,
+            "library_stats": stats,
+            "library_docs_total": (stats or {}).get("docs"),
+            "data_dir": str(DATA_DIR),
+            "backup": "last_full_snapshot.json",
+            "accumulative": True,
+            "hint": "Cada subida se suma. Sync → descarga copia completa en Render free.",
+        })
     except Exception as e:
         return jsonify({"ok": False, "error": str(e), "trace": _tb.format_exc()[-500:], "results": []})
 

@@ -985,8 +985,31 @@ class ConversationalEngine:
     ) -> dict:
         user_text = (user_text or "").strip()
         if not user_text:
-            return {"ok": False, "error": "mensaje vacío"}
+            return {"ok": False, "error": "mensaje vacío", "reply": "Escribe un mensaje."}
 
+        try:
+            return self._reply_inner(session_id, user_text, device_id=device_id, long=long, web=web)
+        except Exception as e:
+            return {
+                "ok": False,
+                "error": str(e)[:240],
+                "reply": (
+                    "El turno falló al procesar. Prueba un mensaje más corto "
+                    "o sin pedir internet. Detalle: " + str(e)[:160]
+                ),
+                "engine": "error",
+                "mode": "error",
+            }
+
+    def _reply_inner(
+        self,
+        session_id: str,
+        user_text: str,
+        device_id: Optional[str] = None,
+        *,
+        long: bool = False,
+        web: bool = False,
+    ) -> dict:
         # Hub: identidad / reservorio / informe / ayuda (prioridad máxima)
         hub = None
         try:
@@ -1202,10 +1225,22 @@ class ConversationalEngine:
         except Exception:
             pass
 
+        mem_stats = {}
+        try:
+            if self.long_memory is not None:
+                mem_stats = self.long_memory.stats() or {}
+        except Exception:
+            mem_stats = {}
+        fractal = {}
+        try:
+            if hasattr(self.codex, "fractal_state"):
+                fractal = self.codex.fractal_state() or {}
+        except Exception:
+            fractal = {}
         return {
             "ok": True,
             "session_id": session_id,
-            "reply": answer,
+            "reply": answer or "Estoy aquí. Reformula en una frase y seguimos.",
             "engine": engine,
             "mode": mode,
             "long": want_long,
@@ -1215,7 +1250,7 @@ class ConversationalEngine:
             "memory": {
                 "absorbed_facts": len(absorbed.get("facts") or []),
                 "absorbed_topics": len(absorbed.get("topics") or []),
-                "stats": self.long_memory.stats() if self.long_memory is not None else {},
+                "stats": mem_stats,
             },
-            "fractal": self.codex.fractal_state() if hasattr(self.codex, "fractal_state") else {},
+            "fractal": fractal,
         }
