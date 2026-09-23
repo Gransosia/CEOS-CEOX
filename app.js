@@ -151,6 +151,7 @@ function startVoiceNavigation() {
 document.querySelectorAll(".tab").forEach((btn) => {
   btn.addEventListener("click", () => {
     showView(btn.dataset.view);
+  });
 });
 
 
@@ -199,6 +200,29 @@ function appendChatBubble(role, content, meta) {
   const who = role === "user" ? "Tú" : "CEOS";
   const metaLine = meta ? `<div class="bubble-meta">${escapeHtml(who)} · ${escapeHtml(meta)}</div>` : `<div class="bubble-meta">${escapeHtml(who)}</div>`;
   div.innerHTML = metaLine + `<div class="bubble-body">${escapeHtml(content)}</div>`;
+  if (role !== "user") {
+    const fb = document.createElement("div");
+    fb.className = "bubble-feedback";
+    fb.innerHTML = '<button type="button" data-feedback="accept">✓ útil</button><button type="button" data-feedback="correction">↺ corregir</button>';
+    fb.querySelectorAll("button").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        try {
+          await api("/api/life/feedback", {
+            method: "POST",
+            body: JSON.stringify({
+              type: btn.getAttribute("data-feedback"),
+              text: (content || "").slice(-500),
+              session_id: getChatSessionId(),
+            }),
+          });
+          btn.parentElement.querySelectorAll("button").forEach(x => x.disabled = true);
+          setChatStatus(btn.getAttribute("data-feedback") === "accept" ? "CEOS ha registrado la confirmación." : "CEOS ha registrado la corrección y ajustará su criterio.");
+          refreshLifeState(true);
+        } catch (e) {}
+      });
+    });
+    div.appendChild(fb);
+  }
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
   return div;
@@ -225,6 +249,70 @@ function setChatTyping(on) {
 function setChatStatus(msg) {
   const el = document.getElementById("chat-status");
   if (el) el.textContent = msg || "";
+}
+
+let ceosLifeTimer = null;
+let ceosLifeBusy = false;
+
+function renderLifeState(state) {
+  state = state || {};
+  const status = document.getElementById("ceos-life-status");
+  const pulse = document.getElementById("ceos-life-pulse");
+  const focus = document.getElementById("ceos-life-focus");
+  const next = document.getElementById("ceos-life-next");
+  const activity = document.getElementById("ceos-life-activity");
+  if (status) status.textContent = state.status || "—";
+  if (focus) focus.textContent = "foco " + (((state.focus || {}).label) || "—");
+  if (pulse) {
+    pulse.textContent = "●";
+    pulse.classList.toggle("alive", state.status === "awake" || state.status === "attending");
+  }
+  const moves = state.next_moves || [];
+  if (next) next.textContent = moves.length ? "Siguiente movimiento: " + moves[0].label : "Observando y conservando continuidad…";
+  if (activity) activity.textContent = "pulso " + (state.pulse || 0) + " · " + ((state.relationship || {}).turns || 0) + " turnos";
+}
+
+async function refreshLifeState(silent = true) {
+  if (ceosLifeBusy) return;
+  ceosLifeBusy = true;
+  try {
+    const r = await api("/api/life/heartbeat", {
+      method: "POST",
+      body: JSON.stringify({ reason: silent ? "ui-pulse" : "ui-refresh" }),
+    });
+    renderLifeState(r.state || {});
+  } catch (e) {
+    const status = document.getElementById("ceos-life-status");
+    if (status && !silent) status.textContent = "sin pulso de servidor";
+  } finally {
+    ceosLifeBusy = false;
+  }
+}
+
+async function reflectCEOSLife() {
+  const next = document.getElementById("ceos-life-next");
+  if (next) next.textContent = "Reflexionando sobre los hilos abiertos…";
+  try {
+    const r = await api("/api/life/reflect", {
+      method: "POST",
+      body: JSON.stringify({ force: true }),
+    });
+    renderLifeState(r.state || {});
+    const ref = r.reflection || {};
+    if (next) next.textContent = ref.note || "Reflexión registrada.";
+    if (typeof appendChatBubble === "function") {
+      const moves = (ref.next_moves || []).slice(0, 3).map(x => "• " + x.question).join("\n");
+      appendChatBubble("assistant", (ref.note || "He revisado mis hilos abiertos.") + (moves ? "\n\n" + moves : ""), "reflexión");
+    }
+  } catch (e) {
+    if (next) next.textContent = "No pude completar la reflexión local.";
+  }
+}
+
+function startCEOSLifePulse() {
+  refreshLifeState(true);
+  if (ceosLifeTimer) clearInterval(ceosLifeTimer);
+  ceosLifeTimer = setInterval(() => refreshLifeState(true), 20000);
 }
 
 async function loadChatHistory() {
@@ -283,6 +371,7 @@ async function sendChatMessage(text) {
     if (res.reply) speakChatText(res.reply);
     refreshMemoryBadge();
     refreshFractalBadge();
+    renderLifeState(res.life || {});
     refreshFractalBadge(res.fractal);
     if (res.web && res.web_meta && res.web_meta.ok) {
       setChatStatus((document.getElementById("chat-status").textContent || "") + " · web " + (res.web_meta.results || 0) + " fuentes");
@@ -319,8 +408,8 @@ function autoSizeChatInput() {
 
 
 // ---------- Voz del navegador (Web Speech API) + memoria UI ----------
-const VOICE_PREF_KEY = "ceos_chat_tts";
-let chatTtsEnabled = localStorage.getItem(VOICE_PREF_KEY) === "1";
+const CHAT_TTS_PREF_KEY = "ceos_chat_tts";
+let chatTtsEnabled = localStorage.getItem(CHAT_TTS_PREF_KEY) === "1";
 let chatRecognizing = false;
 let chatRecognition = null;
 
@@ -609,12 +698,15 @@ function bindChatUI() {
       }
     });
   }
+  document.getElementById("btn-ceos-reflect")?.addEventListener("click", reflectCEOSLife);
+  startCEOSLifePulse();
+
   const btnVoice = document.getElementById("btn-chat-voice-toggle");
   if (btnVoice) {
     updateVoiceToggleUI();
     btnVoice.addEventListener("click", () => {
       chatTtsEnabled = !chatTtsEnabled;
-      localStorage.setItem(VOICE_PREF_KEY, chatTtsEnabled ? "1" : "0");
+      localStorage.setItem(CHAT_TTS_PREF_KEY, chatTtsEnabled ? "1" : "0");
       updateVoiceToggleUI();
       if (!chatTtsEnabled) stopChatSpeech();
       else setChatStatus("Voz alta activada");

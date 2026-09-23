@@ -1,11 +1,11 @@
 @echo off
-title CEOS v5 - Motor CRONOS-Espiral
+title CEOS v6 - Motor CRONOS-Espiral + Living Core
 color 0B
 cd /d "%~dp0"
 
 echo.
 echo  ========================================================
-echo    CEOS v5  -  Motor CRONOS-Espiral
+echo    CEOS v6  -  Motor CRONOS-Espiral + Living Core
 echo  ========================================================
 echo.
 
@@ -38,11 +38,14 @@ if errorlevel 1 (
 )
 
 if not exist "data" mkdir data
-for %%D in (identity memory grammar library mentor codex user uploads chat long_memory coaching) do (
+for %%D in (identity memory grammar library mentor codex user uploads chat long_memory coaching evolve life) do (
     if not exist "data\%%D" mkdir "data\%%D"
 )
 
 echo.
+set CEOS_LIFE_BACKGROUND=1
+set CEOS_LIFE_INTERVAL=20
+
 echo  Arrancando servidor...
 echo  Se abrira el navegador en unos segundos.
 echo  Deja esta ventana ABIERTA mientras uses CEOS.

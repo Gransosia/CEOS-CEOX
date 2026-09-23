@@ -16,11 +16,22 @@ async function api(path, opts = {}) {
     opts.headers || {}
   );
   const res = await fetch(path, { ...opts, headers });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || res.statusText);
+  const text = await res.text();
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = {};
   }
-  return res.json();
+  if (!res.ok) {
+    const msg =
+      (data && (data.error || data.reply)) ||
+      (text && text.indexOf("<") === 0 ? "Error " + res.status + " del servidor" : text.slice(0, 120)) ||
+      res.statusText ||
+      String(res.status);
+    throw new Error(msg);
+  }
+  return data;
 }
 
 // ---------- Tabs + cambio por voz ----------
@@ -140,6 +151,7 @@ function startVoiceNavigation() {
 document.querySelectorAll(".tab").forEach((btn) => {
   btn.addEventListener("click", () => {
     showView(btn.dataset.view);
+  });
 });
 
 
@@ -188,6 +200,29 @@ function appendChatBubble(role, content, meta) {
   const who = role === "user" ? "Tú" : "CEOS";
   const metaLine = meta ? `<div class="bubble-meta">${escapeHtml(who)} · ${escapeHtml(meta)}</div>` : `<div class="bubble-meta">${escapeHtml(who)}</div>`;
   div.innerHTML = metaLine + `<div class="bubble-body">${escapeHtml(content)}</div>`;
+  if (role !== "user") {
+    const fb = document.createElement("div");
+    fb.className = "bubble-feedback";
+    fb.innerHTML = '<button type="button" data-feedback="accept">✓ útil</button><button type="button" data-feedback="correction">↺ corregir</button>';
+    fb.querySelectorAll("button").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        try {
+          await api("/api/life/feedback", {
+            method: "POST",
+            body: JSON.stringify({
+              type: btn.getAttribute("data-feedback"),
+              text: (content || "").slice(-500),
+              session_id: getChatSessionId(),
+            }),
+          });
+          btn.parentElement.querySelectorAll("button").forEach(x => x.disabled = true);
+          setChatStatus(btn.getAttribute("data-feedback") === "accept" ? "CEOS ha registrado la confirmación." : "CEOS ha registrado la corrección y ajustará su criterio.");
+          refreshLifeState(true);
+        } catch (e) {}
+      });
+    });
+    div.appendChild(fb);
+  }
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
   return div;
@@ -214,6 +249,70 @@ function setChatTyping(on) {
 function setChatStatus(msg) {
   const el = document.getElementById("chat-status");
   if (el) el.textContent = msg || "";
+}
+
+let ceosLifeTimer = null;
+let ceosLifeBusy = false;
+
+function renderLifeState(state) {
+  state = state || {};
+  const status = document.getElementById("ceos-life-status");
+  const pulse = document.getElementById("ceos-life-pulse");
+  const focus = document.getElementById("ceos-life-focus");
+  const next = document.getElementById("ceos-life-next");
+  const activity = document.getElementById("ceos-life-activity");
+  if (status) status.textContent = state.status || "—";
+  if (focus) focus.textContent = "foco " + (((state.focus || {}).label) || "—");
+  if (pulse) {
+    pulse.textContent = "●";
+    pulse.classList.toggle("alive", state.status === "awake" || state.status === "attending");
+  }
+  const moves = state.next_moves || [];
+  if (next) next.textContent = moves.length ? "Siguiente movimiento: " + moves[0].label : "Observando y conservando continuidad…";
+  if (activity) activity.textContent = "pulso " + (state.pulse || 0) + " · " + ((state.relationship || {}).turns || 0) + " turnos";
+}
+
+async function refreshLifeState(silent = true) {
+  if (ceosLifeBusy) return;
+  ceosLifeBusy = true;
+  try {
+    const r = await api("/api/life/heartbeat", {
+      method: "POST",
+      body: JSON.stringify({ reason: silent ? "ui-pulse" : "ui-refresh" }),
+    });
+    renderLifeState(r.state || {});
+  } catch (e) {
+    const status = document.getElementById("ceos-life-status");
+    if (status && !silent) status.textContent = "sin pulso de servidor";
+  } finally {
+    ceosLifeBusy = false;
+  }
+}
+
+async function reflectCEOSLife() {
+  const next = document.getElementById("ceos-life-next");
+  if (next) next.textContent = "Reflexionando sobre los hilos abiertos…";
+  try {
+    const r = await api("/api/life/reflect", {
+      method: "POST",
+      body: JSON.stringify({ force: true }),
+    });
+    renderLifeState(r.state || {});
+    const ref = r.reflection || {};
+    if (next) next.textContent = ref.note || "Reflexión registrada.";
+    if (typeof appendChatBubble === "function") {
+      const moves = (ref.next_moves || []).slice(0, 3).map(x => "• " + x.question).join("\n");
+      appendChatBubble("assistant", (ref.note || "He revisado mis hilos abiertos.") + (moves ? "\n\n" + moves : ""), "reflexión");
+    }
+  } catch (e) {
+    if (next) next.textContent = "No pude completar la reflexión local.";
+  }
+}
+
+function startCEOSLifePulse() {
+  refreshLifeState(true);
+  if (ceosLifeTimer) clearInterval(ceosLifeTimer);
+  ceosLifeTimer = setInterval(() => refreshLifeState(true), 20000);
 }
 
 async function loadChatHistory() {
@@ -272,6 +371,7 @@ async function sendChatMessage(text) {
     if (res.reply) speakChatText(res.reply);
     refreshMemoryBadge();
     refreshFractalBadge();
+    renderLifeState(res.life || {});
     refreshFractalBadge(res.fractal);
     if (res.web && res.web_meta && res.web_meta.ok) {
       setChatStatus((document.getElementById("chat-status").textContent || "") + " · web " + (res.web_meta.results || 0) + " fuentes");
@@ -286,8 +386,12 @@ async function sendChatMessage(text) {
     setChatStatus(statusMsg);
   } catch (e) {
     setChatTyping(false);
-    appendChatBubble("assistant", "No pude responder: " + (e.message || e));
-    setChatStatus("Error de conexión");
+    appendChatBubble(
+      "assistant",
+      "No pude responder: " + (e.message || e) +
+        "\n\nSi ves Error 500, hay que redesplegar el backend (core/server.py + core/chat.py). Recarga tras el deploy."
+    );
+    setChatStatus("Error");
   } finally {
     chatBusy = false;
     if (sendBtn) sendBtn.disabled = false;
@@ -304,8 +408,8 @@ function autoSizeChatInput() {
 
 
 // ---------- Voz del navegador (Web Speech API) + memoria UI ----------
-const VOICE_PREF_KEY = "ceos_chat_tts";
-let chatTtsEnabled = localStorage.getItem(VOICE_PREF_KEY) === "1";
+const CHAT_TTS_PREF_KEY = "ceos_chat_tts";
+let chatTtsEnabled = localStorage.getItem(CHAT_TTS_PREF_KEY) === "1";
 let chatRecognizing = false;
 let chatRecognition = null;
 
@@ -594,12 +698,15 @@ function bindChatUI() {
       }
     });
   }
+  document.getElementById("btn-ceos-reflect")?.addEventListener("click", reflectCEOSLife);
+  startCEOSLifePulse();
+
   const btnVoice = document.getElementById("btn-chat-voice-toggle");
   if (btnVoice) {
     updateVoiceToggleUI();
     btnVoice.addEventListener("click", () => {
       chatTtsEnabled = !chatTtsEnabled;
-      localStorage.setItem(VOICE_PREF_KEY, chatTtsEnabled ? "1" : "0");
+      localStorage.setItem(CHAT_TTS_PREF_KEY, chatTtsEnabled ? "1" : "0");
       updateVoiceToggleUI();
       if (!chatTtsEnabled) stopChatSpeech();
       else setChatStatus("Voz alta activada");
@@ -1068,6 +1175,166 @@ document.getElementById("btn-save-keys").addEventListener("click", async () => {
 });
 
 
+/** Límites prácticos (Render free + Gunicorn 120s) */
+const RESERVOIR_LIMITS = {
+  maxFilesPerRequest: 20,
+  maxFileBytes: 40 * 1024 * 1024, // 40 MB por archivo
+  maxBatchBytes: 80 * 1024 * 1024, // 80 MB por tanda HTTP
+  timeoutMs: 180000,
+};
+
+/**
+ * Sube archivos al reservorio de forma acumulativa.
+ * Varias tandas (hoy, mañana…) se SUMAN; no sustituyen.
+ * Parte en lotes para no saturar el plan free.
+ */
+async function uploadToReservoir(fileList, opts = {}) {
+  const onProgress = opts.onProgress || (() => {});
+  const author = opts.author || "";
+  const tags = opts.tags || "";
+  const all = Array.from(fileList || []);
+  const lines = [];
+  let okN = 0;
+  let lastStats = null;
+  const rejected = [];
+
+  // Filtrar por tamaño
+  const files = [];
+  for (const f of all) {
+    if (f.size > RESERVOIR_LIMITS.maxFileBytes) {
+      rejected.push(
+        "✗ " + f.name + ": supera " + Math.round(RESERVOIR_LIMITS.maxFileBytes / 1024 / 1024) + " MB (límite práctico)"
+      );
+    } else {
+      files.push(f);
+    }
+  }
+  lines.push(...rejected);
+
+  // Partir en lotes por número y peso
+  const batches = [];
+  let cur = [];
+  let curBytes = 0;
+  for (const f of files) {
+    if (
+      cur.length >= RESERVOIR_LIMITS.maxFilesPerRequest ||
+      (curBytes + f.size > RESERVOIR_LIMITS.maxBatchBytes && cur.length > 0)
+    ) {
+      batches.push(cur);
+      cur = [];
+      curBytes = 0;
+    }
+    cur.push(f);
+    curBytes += f.size;
+  }
+  if (cur.length) batches.push(cur);
+
+  let done = 0;
+  for (let b = 0; b < batches.length; b++) {
+    const batch = batches[b];
+    onProgress(
+      "Tanda " + (b + 1) + "/" + batches.length + " · " + batch.length + " archivo(s)…",
+      lines
+    );
+    const fd = new FormData();
+    if (author) fd.append("author", author);
+    if (tags) fd.append("tags", tags);
+    batch.forEach((file) => fd.append("file", file, file.name));
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), RESERVOIR_LIMITS.timeoutMs);
+      const res = await fetch("/api/mentor/ingest/file", {
+        method: "POST",
+        headers: { "X-Device-Id": getDeviceId() },
+        body: fd,
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      const data = await res.json().catch(() => ({}));
+      lastStats = data.library_stats || lastStats;
+      const results = data.results || [];
+      if (results.length) {
+        results.forEach((r) => {
+          if (r.status === "ok") {
+            okN++;
+            if (r.kind === "zip") lines.push("✓ ZIP " + (r.file || "?") + ": " + (r.ingested || 0) + " docs");
+            else lines.push("✓ " + (r.file || "?") + ": " + (r.chunks || 0) + " trozos");
+          } else {
+            lines.push("✗ " + (r.file || "?") + ": " + (r.error || "error"));
+          }
+        });
+      } else if (data.ok === false) {
+        // Fallback: subir de uno en uno este lote
+        for (const file of batch) {
+          onProgress("Uno a uno: " + file.name, lines);
+          const fd1 = new FormData();
+          if (author) fd1.append("author", author);
+          if (tags) fd1.append("tags", tags);
+          fd1.append("file", file, file.name);
+          try {
+            const r1 = await fetch("/api/mentor/ingest/file", {
+              method: "POST",
+              headers: { "X-Device-Id": getDeviceId() },
+              body: fd1,
+            });
+            const d1 = await r1.json().catch(() => ({}));
+            lastStats = d1.library_stats || lastStats;
+            const rr = (d1.results && d1.results[0]) || {};
+            if (d1.ok || rr.status === "ok") {
+              okN++;
+              lines.push("✓ " + file.name + " (" + (rr.chunks || 0) + " trozos)");
+            } else {
+              lines.push("✗ " + file.name + ": " + (rr.error || d1.error || r1.status));
+            }
+          } catch (e2) {
+            lines.push("✗ " + file.name + ": " + e2.message);
+          }
+        }
+      }
+    } catch (e) {
+      // lote falló → uno a uno
+      for (const file of batch) {
+        onProgress("Reintento: " + file.name, lines);
+        const fd1 = new FormData();
+        if (author) fd1.append("author", author);
+        if (tags) fd1.append("tags", tags);
+        fd1.append("file", file, file.name);
+        try {
+          const r1 = await fetch("/api/mentor/ingest/file", {
+            method: "POST",
+            headers: { "X-Device-Id": getDeviceId() },
+            body: fd1,
+          });
+          const d1 = await r1.json().catch(() => ({}));
+          lastStats = d1.library_stats || lastStats;
+          const rr = (d1.results && d1.results[0]) || {};
+          if (d1.ok || rr.status === "ok") {
+            okN++;
+            lines.push("✓ " + file.name);
+          } else {
+            lines.push("✗ " + file.name + ": " + (rr.error || d1.error || "error"));
+          }
+        } catch (e2) {
+          lines.push(
+            "✗ " + file.name + ": " + (e2.name === "AbortError" ? "tiempo agotado" : e2.message)
+          );
+        }
+      }
+    }
+    done += batch.length;
+    onProgress("Progreso " + done + "/" + files.length, lines);
+  }
+
+  const total = lastStats && lastStats.docs != null ? lastStats.docs : null;
+  const summary =
+    "Completado: " + okN + "/" + all.length +
+    (total != null ? " · Reservorio total: " + total + " documento(s)" : "") +
+    "\n" + lines.join("\n") +
+    "\n\nCada subida se SUMA a la anterior. Puedes repetir cuando quieras." +
+    "\nImportante en Render free: Sync → Descargar copia completa para no perder el reservorio.";
+  return { okN, total, lines, summary, lastStats, attempted: all.length };
+}
+
 document.getElementById("btn-upload")?.addEventListener("click", async () => {
   const input = document.getElementById("upload-files");
   const box = document.getElementById("upload-result");
@@ -1080,51 +1347,33 @@ document.getElementById("btn-upload")?.addEventListener("click", async () => {
   const tags = document.getElementById("upload-tags")?.value || "";
   box.classList.remove("hidden");
   box.className = "result";
-  const lines = [];
-  let okN = 0;
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    box.textContent = `Subiendo ${i + 1}/${files.length}: ${file.name}…
-` + lines.join("
-");
-    const fd = new FormData();
-    if (author) fd.append("author", author);
-    if (tags) fd.append("tags", tags);
-    fd.append("light", "1");
-    fd.append("file", file, file.name);
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 180000);
-      const res = await fetch("/api/mentor/ingest/file", {
-        method: "POST",
-        headers: { "X-Device-Id": getDeviceId() },
-        body: fd,
-        signal: ctrl.signal,
-      });
-      clearTimeout(timer);
-      const data = await res.json().catch(() => ({}));
-      const r = (data.results && data.results[0]) || {};
-      if (res.ok && (data.ok || r.status === "ok")) {
-        okN++;
-        if (r.kind === "zip") lines.push(`✓ ZIP ${file.name}: ${r.ingested || 0} docs`);
-        else lines.push(`✓ ${file.name}: ${r.chunks || 0} trozos, ${r.chars || 0} caracteres`);
-        if (data.library_stats) {
-          const st = document.getElementById("library-stats");
-          if (st) st.textContent = `Biblioteca: ${data.library_stats.docs} docs · ${data.library_stats.chars} caracteres · ${data.library_stats.media} medios`;
-        }
-      } else {
-        lines.push(`✗ ${file.name}: ${r.error || data.error || res.statusText || "error"}`);
-      }
-    } catch (e) {
-      lines.push(`✗ ${file.name}: ${e.name === "AbortError" ? "tiempo agotado" : e.message}`);
+  box.textContent = "Preparando subida de " + files.length + " archivo(s)…";
+  const result = await uploadToReservoir(files, {
+    author,
+    tags,
+    onProgress: (msg, lines) => {
+      box.textContent = msg + "\n" + (lines || []).slice(-12).join("\n");
+    },
+  });
+  box.className = result.okN > 0 ? "result ok" : "result warn";
+  box.textContent = result.summary;
+  if (result.lastStats) {
+    const st = document.getElementById("library-stats");
+    if (st) {
+      st.textContent =
+        "Biblioteca: " +
+        result.lastStats.docs +
+        " docs · " +
+        result.lastStats.chars +
+        " caracteres · " +
+        (result.lastStats.media || 0) +
+        " medios";
     }
   }
-  box.className = okN > 0 ? "result ok" : "result warn";
-  box.textContent = `Completado: ${okN}/${files.length} archivos cargados.
-` + lines.join("
-");
-  if (okN > 0) input.value = "";
-  try { refreshMaestro(); } catch (e) {}
+  if (result.okN > 0) input.value = "";
+  try {
+    refreshMaestro();
+  } catch (e) {}
 });
 
 
@@ -1760,4 +2009,134 @@ document.addEventListener("DOMContentLoaded", () => {
     window.speechSynthesis.onvoiceschanged = bootVoices;
     setTimeout(bootVoices, 500);
   }
+  try {
+    bindChatHub();
+  } catch (e) {
+    console.warn("hub", e);
+  }
 });
+
+/* ===== Hub: identidad + subida + acciones desde el chat ===== */
+function setHubStatus(msg) {
+  const el = document.getElementById("chat-hub-status");
+  if (el) el.textContent = msg || "";
+}
+
+async function refreshUserBadge() {
+  const badge = document.getElementById("chat-user-badge");
+  try {
+    const r = await fetch("/cronos/v1/who", { headers: { "X-Device-Id": getDeviceId() } });
+    const d = await r.json();
+    const name =
+      (d.user && (d.user.display_name || d.user.name)) ||
+      (d.profile && (d.profile.display_name || d.profile.name)) ||
+      "";
+    if (badge) badge.textContent = name ? "tú " + name : "tú —";
+    const input = document.getElementById("chat-name-input");
+    if (input && name && !input.value) input.value = name;
+  } catch (e) {
+    if (badge) badge.textContent = "tú —";
+  }
+}
+
+async function saveChatName() {
+  const input = document.getElementById("chat-name-input");
+  const name = (input && input.value || "").trim();
+  if (!name) {
+    setHubStatus("Escribe tu nombre primero.");
+    return;
+  }
+  setHubStatus("Guardando nombre…");
+  try {
+    // Prefer chat natural language path
+    if (typeof sendChatMessage === "function") {
+      await sendChatMessage("Me llamo " + name);
+    } else {
+      await api("/cronos/v1/who", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+    }
+    await refreshUserBadge();
+    setHubStatus("Nombre guardado: " + name);
+  } catch (e) {
+    setHubStatus("No se pudo guardar: " + (e.message || e));
+  }
+}
+
+async function uploadFilesFromChat(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  const author =
+    (document.getElementById("chat-name-input") || {}).value ||
+    (document.getElementById("upload-author") || {}).value ||
+    "";
+  setHubStatus("Subiendo " + files.length + " archivo(s) al reservorio…");
+  const result = await uploadToReservoir(files, {
+    author,
+    onProgress: (msg) => setHubStatus(msg),
+  });
+  setHubStatus(
+    result.okN
+      ? "Listo +" + result.okN + (result.total != null ? " · total " + result.total : "")
+      : "Falló la subida"
+  );
+  if (typeof appendChatBubble === "function") {
+    appendChatBubble("assistant", result.summary, "hub-upload");
+  }
+  const input = document.getElementById("chat-file-input");
+  if (input) input.value = "";
+}
+
+function bindChatHub() {
+  document.getElementById("btn-chat-save-name")?.addEventListener("click", saveChatName);
+  document.getElementById("chat-name-input")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      saveChatName();
+    }
+  });
+  const fileInput = document.getElementById("chat-file-input");
+  document.getElementById("btn-chat-attach")?.addEventListener("click", () => {
+    fileInput?.click();
+  });
+  fileInput?.addEventListener("change", () => {
+    if (fileInput.files && fileInput.files.length) uploadFilesFromChat(fileInput.files);
+  });
+
+  document.querySelectorAll(".hub-act").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const act = btn.getAttribute("data-hub");
+      if (act === "upload") {
+        fileInput?.click();
+        return;
+      }
+      if (act === "library" && typeof sendChatMessage === "function") {
+        sendChatMessage("Qué hay en el reservorio");
+        return;
+      }
+      if (act === "report") {
+        const topic = prompt("Tema del informe (ej. estilo de mis cuentos, astroteología):");
+        if (topic && topic.trim() && typeof sendChatMessage === "function") {
+          sendChatMessage("Investiga " + topic.trim());
+        }
+        return;
+      }
+      if (act === "memory" && typeof sendChatMessage === "function") {
+        sendChatMessage("Qué has aprendido");
+        return;
+      }
+      if (act === "help" && typeof sendChatMessage === "function") {
+        sendChatMessage("Qué puedes hacer y cómo te uso sin cambiar de pestaña");
+        return;
+      }
+      if (act === "sync") {
+        showView("sync");
+        setHubStatus("Sync: descarga o restaura una copia completa de la memoria.");
+        return;
+      }
+    });
+  });
+
+  refreshUserBadge();
+}

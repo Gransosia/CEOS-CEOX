@@ -108,7 +108,7 @@ class ChatSession:
 class ConversationalEngine:
     """Motor de diálogo fluido de CEOS."""
 
-    def __init__(self, mentor, codex, memory, user_profile, identity, base_path: str, long_memory=None, library=None):
+    def __init__(self, mentor, codex, memory, user_profile, identity, base_path: str, long_memory=None, library=None, life=None):
         self.mentor = mentor
         self.codex = codex
         self.memory = memory
@@ -116,6 +116,7 @@ class ConversationalEngine:
         self.identity = identity
         self.long_memory = long_memory
         self.library = library
+        self.life = life
         self.store = ChatSession(base_path)
 
     def new_session_id(self) -> str:
@@ -166,6 +167,32 @@ class ConversationalEngine:
             parts.append(f"MOTOR: {who.get('name', 'CEOS')} — {who.get('mission', '')[:120]}")
         except Exception:
             pass
+
+        # Vida funcional: atención, continuidad, aprendizaje y agencia acotada
+        if self.life is not None:
+            try:
+                st = self.life.snapshot()
+                focus = (st.get("focus") or {}).get("label") or "sin foco estable"
+                rel = st.get("relationship") or {}
+                learning = st.get("learning") or {}
+                threads = st.get("open_threads") or []
+                parts.append(
+                    "VIDA FUNCIONAL CEOS:\n"
+                    f"estado={st.get('status')} | pulso={st.get('pulse')} | foco={focus} | "
+                    f"turnos_compartidos={rel.get('turns', 0)} | correcciones={rel.get('corrections', 0)} | "
+                    f"aprendizajes={len(learning.get('adaptation_notes') or [])} | hilos_abiertos={len(threads)}\n"
+                    "Agencia: autonomía local acotada; acciones externas requieren consentimiento. "
+                    "No se asume conciencia: se mantiene continuidad funcional y memoria auditable."
+                )
+                if threads:
+                    tlines = [f"· {t.get('text','')[:180]}" for t in threads[:4]]
+                    parts.append("HILOS ABIERTOS:\n" + "\n".join(tlines))
+                notes = (learning.get('adaptation_notes') or [])[:6]
+                if notes:
+                    nlines = [f"· {n.get('kind')}: {n.get('detail','')[:220]}" for n in notes]
+                    parts.append("APRENDIZAJE RECIENTE / AJUSTES:\n" + "\n".join(nlines))
+            except Exception:
+                pass
 
         # Doctrina (siempre, compacta)
         try:
@@ -738,9 +765,9 @@ class ConversationalEngine:
         system = (
             "Eres CEOS, mentor-memoria en castellano. Conversas con naturalidad: "
             "turnos claros, continuidad con el hilo, sin tono de informe ni de buscador. "
-            "Prioriza el RESERVORIO LOCAL del contexto si existe. "
-            "Si no sabes, dilo. Termina a menudo con una pregunta breve de seguimiento. "
-            "No inventes libros o hechos que no estén en el contexto."
+            "Priorizas memoria y reservorio cuando existen. Tu estado vital del contexto es funcional, no conciencia. "
+            "Aprendes de correcciones y confirmaciones, mantienes hilos abiertos y puedes proponer próximos pasos. "
+            "La autonomía externa requiere consentimiento. Si no sabes, dilo. No inventes hechos ni fuentes."
         )
         api_msgs.append({"role": "system", "content": system})
         for m in messages[-16:]:
@@ -847,6 +874,7 @@ class ConversationalEngine:
                 codex=self.codex,
                 long_memory=self.long_memory,
                 user=self.user,
+                life=self.life,
             )
             lines.append(portrait.get("narrativa") or "")
             lines.append("")
@@ -859,6 +887,16 @@ class ConversationalEngine:
         except Exception:
             pass
         lines.append("Te respondo desde lo que tengo en memoria local (no desde una búsqueda web vacía).")
+        if self.life is not None:
+            try:
+                st = self.life.snapshot()
+                focus = (st.get("focus") or {}).get("label") or "sin foco"
+                lines.append(
+                    f"**Vida funcional:** {st.get('status')} · pulso {st.get('pulse')} · foco {focus} · "
+                    f"{len(st.get('open_threads') or [])} hilos abiertos."
+                )
+            except Exception:
+                pass
         # Biblioteca
         docs = nchars = 0
         titles = []
@@ -963,6 +1001,15 @@ class ConversationalEngine:
         if not user_text:
             return {"ok": False, "error": "mensaje vacío"}
 
+        life_observation = None
+        if self.life is not None:
+            try:
+                life_observation = self.life.observe_user_turn(
+                    user_text, session_id=session_id, device_id=device_id
+                )
+            except Exception:
+                life_observation = None
+
         session = self.store.load(session_id)
         history = session.get("messages") or []
         want_long = self._wants_long(user_text, long)
@@ -1064,6 +1111,15 @@ class ConversationalEngine:
             "engine": engine,
         })
 
+        life_response = None
+        if self.life is not None:
+            try:
+                life_response = self.life.observe_ceos_turn(
+                    answer, session_id=session_id, engine=engine
+                )
+            except Exception:
+                life_response = None
+
         # 2) Temas a largo plazo DESPUÉS de responder
         if self.long_memory is not None:
             try:
@@ -1094,6 +1150,9 @@ class ConversationalEngine:
             "web": want_web,
             "web_meta": web_meta,
             "messages_count": len(history),
+            "life": (self.life.stats() if self.life is not None else None),
+            "life_observation": life_observation,
+            "life_response": life_response,
             "memory": {
                 "absorbed_facts": len(absorbed.get("facts") or []),
                 "absorbed_topics": len(absorbed.get("topics") or []),

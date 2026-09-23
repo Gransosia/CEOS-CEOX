@@ -25,6 +25,7 @@ def compose_identity(
     long_memory=None,
     user=None,
     evolution_scale=None,
+    life=None,
 ) -> dict:
     """Construye un retrato de identidad anclado en memoria actual."""
     out: dict[str, Any] = {
@@ -117,6 +118,21 @@ def compose_identity(
     out["memoria"]["hechos"] = facts_n
     out["memoria"]["temas"] = topics_n
     out["memoria"]["muestras"] = fact_samples
+
+    # Vida funcional
+    if life is not None:
+        try:
+            ls = life.snapshot()
+            out["memoria"]["vida_funcional"] = {
+                "estado": ls.get("status"),
+                "pulso": ls.get("pulse"),
+                "foco": (ls.get("focus") or {}).get("label"),
+                "hilos_abiertos": len(ls.get("open_threads") or []),
+                "turnos": (ls.get("relationship") or {}).get("turns", 0),
+                "correcciones": (ls.get("relationship") or {}).get("corrections", 0),
+            }
+        except Exception:
+            pass
 
     # Escala
     try:

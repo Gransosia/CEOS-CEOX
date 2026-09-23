@@ -894,3 +894,71 @@ button.ghost:hover { color: var(--text); border-color: rgba(255,255,255,0.18); }
 .voice-stop:hover {
   background: rgba(248, 113, 113, 0.2) !important;
 }
+
+/* ===== CEOS Living Core ===== */
+.ceos-life {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 12px;
+  align-items: center;
+  margin: 8px 0 10px;
+  padding: 9px 11px;
+  border: 1px solid rgba(127,127,127,.22);
+  border-radius: 12px;
+  background: rgba(127,127,127,.06);
+  font-size: .9rem;
+}
+.ceos-life-main,
+.ceos-life-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.ceos-life-focus {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ceos-life-next {
+  grid-column: 1 / -1;
+  padding-left: 18px;
+  line-height: 1.35;
+}
+.ceos-life-actions {
+  justify-content: flex-end;
+}
+.ceos-life-pulse {
+  font-size: 1.05rem;
+  opacity: .35;
+  transition: opacity .2s, transform .2s;
+}
+.ceos-life-pulse.alive {
+  opacity: 1;
+  transform: scale(1.08);
+}
+.small-btn {
+  padding: 4px 8px;
+  font-size: .8rem;
+}
+.bubble-feedback {
+  display: flex;
+  gap: 6px;
+  margin-top: 7px;
+  opacity: .72;
+}
+.bubble-feedback button {
+  border: 0;
+  background: transparent;
+  padding: 2px 5px;
+  cursor: pointer;
+  font: inherit;
+  font-size: .76rem;
+  opacity: .8;
+}
+.bubble-feedback button:hover { opacity: 1; }
+.bubble-feedback button:disabled { opacity: .35; cursor: default; }
+@media (max-width: 680px) {
+  .ceos-life { grid-template-columns: 1fr; }
+  .ceos-life-actions { justify-content: flex-start; }
+}

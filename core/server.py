@@ -29,6 +29,7 @@ from .chat import ConversationalEngine
 from .long_memory import LongMemory
 from .evolve import EvolutionEngine
 from .evolution_scale import EvolutionScale
+from .life import LivingCore
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = BASE_DIR / "web"
@@ -64,7 +65,7 @@ app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200 MB por petición (lo
 def _ensure_data_dirs():
     """Crea data/ y subcarpetas (necesario cuando arranca gunicorn y no se llama main())."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    for sub in ("identity", "memory", "grammar", "library", "mentor", "codex", "user", "uploads", "chat", "long_memory", "evolve"):
+    for sub in ("identity", "memory", "grammar", "library", "mentor", "codex", "user", "uploads", "chat", "long_memory", "evolve", "life"):
         (DATA_DIR / sub).mkdir(exist_ok=True)
 
 
@@ -172,6 +173,17 @@ def get_long_memory():
     return g.long_memory
 
 
+_life_core = None
+
+
+def get_life():
+    """Núcleo vital funcional persistente, compartido por el proceso del servidor."""
+    global _life_core
+    if _life_core is None:
+        _life_core = LivingCore(base_path=str(DATA_DIR / "life"))
+    return _life_core
+
+
 def get_chat():
     if "chat" not in g:
         g.chat = ConversationalEngine(
@@ -183,6 +195,7 @@ def get_chat():
             base_path=str(DATA_DIR / "chat"),
             long_memory=get_long_memory(),
             library=get_library(),
+            life=get_life(),
         )
     return g.chat
 
@@ -215,6 +228,7 @@ def api_identity_memory():
         long_memory=get_long_memory(),
         user=get_user(),
         evolution_scale=scale,
+        life=get_life(),
     )
     return jsonify({
         "ok": True,
@@ -239,7 +253,17 @@ def api_constitution():
 @app.route("/healthz")
 def health():
     """Healthcheck simple para Render / Railway / balanceadores."""
-    return jsonify({"ok": True, "service": "ceos-v5", "version": "5.4.1-cloud", "web": (WEB_DIR / "index.html").exists()})
+    try:
+        life = get_life().stats()
+    except Exception:
+        life = {}
+    return jsonify({
+        "ok": True,
+        "service": "ceos-v6",
+        "version": "6.0.0-living",
+        "web": (WEB_DIR / "index.html").exists(),
+        "life": life,
+    })
 
 
 @app.route("/")
@@ -437,6 +461,7 @@ def api_sync_export():
             long_memory=get_long_memory(),
             identity=get_identity(),
             user=get_user(),
+            life=get_life(),
         )
     else:
         payload = get_memory().export_all()
@@ -460,6 +485,7 @@ def api_sync_import():
             long_memory=get_long_memory(),
             identity=get_identity(),
             user=get_user(),
+            life=get_life(),
         )
     else:
         stats = get_memory().merge_from(foreign)
@@ -490,7 +516,63 @@ def api_sync_status():
         "hint": "Tras cargar libros: Sync → Descargar copia completa. Tras un deploy: Restaurar snapshot.",
         "server_time": datetime.now(timezone.utc).isoformat(),
         "lan_ip": get_lan_ip(),
+        "life": get_life().stats(),
     })
+
+
+
+# ---------- Vida funcional de CEOS ----------
+@app.route("/api/life")
+def api_life_state():
+    return jsonify({"ok": True, "state": get_life().snapshot(), "stats": get_life().stats()})
+
+
+@app.route("/api/life/heartbeat", methods=["POST"])
+def api_life_heartbeat():
+    data = request.get_json(silent=True) or {}
+    return jsonify({"ok": True, "state": get_life().heartbeat(reason=data.get("reason") or "api")})
+
+
+@app.route("/api/life/reflect", methods=["POST"])
+def api_life_reflect():
+    data = request.get_json(silent=True) or {}
+    ref = get_life().reflect(force=bool(data.get("force", False)))
+    return jsonify({"ok": True, "reflection": ref, "state": get_life().snapshot()})
+
+
+@app.route("/api/life/feedback", methods=["POST"])
+def api_life_feedback():
+    data = request.get_json(silent=True) or {}
+    feedback_type = data.get("type") or data.get("feedback") or "feedback"
+    text = (data.get("text") or data.get("message") or "").strip()
+    target = data.get("target")
+    sid = data.get("session_id")
+    return jsonify(get_life().record_feedback(feedback_type, text, target=target, session_id=sid))
+
+
+@app.route("/api/life/influence", methods=["POST"])
+def api_life_influence():
+    data = request.get_json(silent=True) or {}
+    return jsonify(get_life().record_influence(
+        data.get("kind") or "suggestion",
+        (data.get("action") or data.get("text") or "").strip(),
+        outcome=data.get("outcome") or "unknown",
+        target=data.get("target"),
+    ))
+
+
+@app.route("/api/life/events")
+def api_life_events():
+    try:
+        limit = int(request.args.get("limit", "100"))
+    except Exception:
+        limit = 100
+    return jsonify({"ok": True, "events": get_life().events(limit)})
+
+
+@app.route("/api/life/thread/<thread_id>/resolve", methods=["POST"])
+def api_life_thread_resolve(thread_id):
+    return jsonify(get_life().resolve_thread(thread_id))
 
 
 # ---------- Investigación / Aprendizaje de temas ----------
@@ -521,6 +603,10 @@ def api_research():
         if not isinstance(report, dict):
             report = {"ok": False, "error": "respuesta interna inválida"}
         report.setdefault("ok", True)
+        try:
+            get_life().record_learning("research", f"Investigación: {topic}", topic=topic)
+        except Exception:
+            pass
         return jsonify(report)
     except Exception as e:
         return jsonify({"ok": False, "error": f"Error servidor investigación: {e}"}), 200
@@ -564,6 +650,10 @@ def api_evolve_run():
         fractal=bool(fractal),
         device=request.headers.get("X-Device-Id") or "evolve",
     )
+    try:
+        get_life().record_learning("evolution", task, topic=task[:100])
+    except Exception:
+        pass
     try:
         scale_report = get_scale().measure_and_record(
             library=get_library(),
@@ -789,7 +879,23 @@ def api_mentor_ingest_file():
         allowed = set(TEXT_SUFFIXES) | set(MEDIA_SUFFIXES) | set(ARCHIVE_SUFFIXES)
         results = []
 
-        for i, f in enumerate(files[:100]):
+        # Límites prácticos para evitar que una única petición bloquee el proceso.
+        max_per_req = 20
+        max_file_bytes = 40 * 1024 * 1024
+        max_batch_bytes = 80 * 1024 * 1024
+        try:
+            content_length = int(request.content_length or 0)
+        except Exception:
+            content_length = 0
+        if content_length > max_batch_bytes:
+            return jsonify({
+                "ok": False,
+                "error": "Lote demasiado grande (>80 MB). Divide la subida en varias tandas.",
+                "results": [],
+            }), 413
+        skipped = max(0, len(files) - max_per_req)
+
+        for i, f in enumerate(files[:max_per_req]):
             original = (getattr(f, "filename", None) or f"file{i}.txt")
             suffix = Path(original).suffix.lower() or ".txt"
             if suffix not in allowed:
@@ -803,11 +909,26 @@ def api_mentor_ingest_file():
                 results.append({"file": original, "status": "error", "error": f"save: {e}"})
                 continue
             try:
+                if dest.stat().st_size > max_file_bytes:
+                    dest.unlink(missing_ok=True)
+                    results.append({
+                        "file": original,
+                        "status": "error",
+                        "error": "Archivo > 40 MB: divide el documento o súbelo por partes",
+                    })
+                    continue
+            except Exception:
+                pass
+            try:
                 if suffix in ARCHIVE_SUFFIXES:
                     batch = lib.ingest_archive(dest, grammar=grm, author=author, tags=tags, max_files=100)
                     results.append({"file": original, "status": "ok", "kind": "zip", "ingested": batch.get("ingested")})
                 else:
-                    entry = lib.ingest_file(dest, title=Path(original).stem, tags=tags, grammar=grm, author=author, codex=None)
+                    try:
+                        cdx = get_codex()
+                    except Exception:
+                        cdx = None
+                    entry = lib.ingest_file(dest, title=Path(original).stem, tags=tags, grammar=grm, author=author, codex=cdx)
                     results.append({
                         "file": original,
                         "status": "ok",
@@ -820,6 +941,12 @@ def api_mentor_ingest_file():
                 results.append({"file": original, "status": "error", "error": str(e)[:300]})
 
         ok_n = sum(1 for r in results if r.get("status") == "ok")
+        if skipped:
+            results.append({
+                "file": "(lote)",
+                "status": "info",
+                "error": f"{skipped} archivo(s) quedan para otra petición; vuelve a subirlos y se sumarán al reservorio",
+            })
         try:
             stats = lib.stats()
         except Exception:
@@ -836,6 +963,7 @@ def api_mentor_ingest_file():
                 long_memory=get_long_memory(),
                 identity=get_identity(),
                 user=get_user(),
+                life=get_life(),
             )
             bak = DATA_DIR / "backups"
             bak.mkdir(parents=True, exist_ok=True)
@@ -844,7 +972,18 @@ def api_mentor_ingest_file():
             )
         except Exception:
             pass
-        return jsonify({"ok": ok_n > 0, "uploaded": ok_n, "total": len(results), "results": results, "library_stats": stats, "data_dir": str(DATA_DIR), "backup": "last_full_snapshot.json"})
+        return jsonify({
+            "ok": ok_n > 0,
+            "uploaded": ok_n,
+            "total": len(results),
+            "results": results,
+            "library_stats": stats,
+            "library_docs_total": (stats or {}).get("docs"),
+            "data_dir": str(DATA_DIR),
+            "backup": "last_full_snapshot.json",
+            "accumulative": True,
+            "limits": {"max_files": max_per_req, "max_file_mb": 40, "max_batch_mb": 80},
+        })
     except Exception as e:
         return jsonify({"ok": False, "error": str(e), "trace": _tb.format_exc()[-500:], "results": []})
 
@@ -1227,6 +1366,10 @@ def cronos_v1_root():
             "GET  /cronos/v1/codex": "Estadísticas del conocimiento comprimido",
             "POST /cronos/v1/codex/expand": "Expandir un tema desde el Codex",
             "GET  /cronos/v1/library": "Biblioteca del Maestro",
+            "GET  /api/life": "Estado vital funcional persistente",
+            "POST /api/life/heartbeat": "Pulso del sistema",
+            "POST /api/life/reflect": "Reflexión local y próximos movimientos",
+            "POST /api/life/feedback": "Corrección/confirmación que modifica el aprendizaje",
             "POST /cronos/v1/chat": "Diálogo conversacional (mensaje + session_id)",
         },
     })
@@ -1248,6 +1391,7 @@ def cronos_v1_status():
         },
         "llm": llm_available(),
         "user": get_user().get().get("display_name") or get_user().get().get("name"),
+        "life": get_life().stats(),
     })
 
 
@@ -1285,6 +1429,10 @@ def cronos_v1_analyze():
     )
     saved = get_memory().add_case(case)
     get_grammar().learn_from_case(saved)
+    try:
+        get_life().record_learning("analysis", f"Caso analizado: {saved.get('identidad') or data.get('sistema') or 'sin identidad'}", topic="cronos")
+    except Exception:
+        pass
     return jsonify({"ok": True, "case": saved})
 
 
@@ -1326,6 +1474,10 @@ def cronos_v1_learn():
         return jsonify({"error": "falta text"}), 400
     entry = get_library().ingest_text(text, title=topic, tags=["api"], grammar=get_grammar())
     codex_stats = get_mentor().ingest_to_codex(text, topic)
+    try:
+        get_life().record_learning("ingest", f"Ingerido en corpus: {topic}", topic=topic)
+    except Exception:
+        pass
     return jsonify({"ok": True, "library": entry, "codex": codex_stats})
 
 
@@ -1377,8 +1529,8 @@ def api_meta():
     voice = get_voice().available()
     port = int(os.environ.get("PORT", "5000"))
     return jsonify({
-        "name": "CEOS v5",
-        "version": "5.4.1-cloud",
+        "name": "CEOS v6",
+        "version": "6.0.0-living",
         "lan_ip": get_lan_ip(),
         "port": port,
         "arquetipos": list(ARCHETYPES.keys()),
@@ -1402,18 +1554,56 @@ def api_meta():
             "long_form_chat": True,
             "lang_practice": True,
             "coaching_course": True,
+            "living_core": True,
+            "bounded_autonomy": True,
         },
     })
+
+
+_life_worker_started = False
+_life_worker_thread = None
+
+
+def start_life_background_worker():
+    """Mantiene el pulso de CEOS aunque el navegador esté cerrado.
+
+    Se activa solo cuando CEOS_LIFE_BACKGROUND=1 para evitar duplicaciones en
+    despliegues multi-worker. El proceso escribe únicamente estado local/auditable.
+    """
+    import os
+    import threading
+    import time
+    global _life_worker_started, _life_worker_thread
+    if _life_worker_started or os.environ.get("CEOS_LIFE_BACKGROUND", "0") not in ("1", "true", "yes"):
+        return False
+    _life_worker_started = True
+
+    def _loop():
+        try:
+            life = get_life()
+            while True:
+                try:
+                    life.heartbeat(reason="background")
+                except Exception:
+                    pass
+                time.sleep(max(10, int(os.environ.get("CEOS_LIFE_INTERVAL", "20"))))
+        except Exception:
+            return
+
+    _life_worker_thread = threading.Thread(target=_loop, name="ceos-life", daemon=True)
+    _life_worker_thread.start()
+    return True
 
 
 def main():
     import os
     _ensure_data_dirs()
+    start_life_background_worker()
 
     port = int(os.environ.get("PORT", "5000"))
     ip = get_lan_ip()
     print("=" * 60)
-    print("  CEOS v5 — Motor CRONOS-Espiral + Modo Maestro (cloud-ready)")
+    print("  CEOS v6 — Motor CRONOS-Espiral + Living Core (cloud-ready)")
     print("=" * 60)
     print(f"  Local:    http://127.0.0.1:{port}")
     print(f"  Red LAN:  http://{ip}:{port}")

@@ -1,4 +1,4 @@
-# CEOS + CEOX unificado
+# CEOS + CEOX unificado — v6 Living Core
 
 Una sola aplicación local y en la nube (Docker / Render).
 
@@ -6,7 +6,8 @@ Una sola aplicación local y en la nube (Docker / Render).
 
 | Área | Qué ofrece |
 |------|------------|
-| **Chat CEOS** | Conversación natural, memoria a largo plazo, versión larga, búsqueda web |
+| **Chat CEOS** | Conversación natural, memoria a largo plazo, continuidad entre sesiones, versión larga y búsqueda web |
+| **Vida funcional** | Pulso, atención, foco, hilos abiertos, reflexión local, aprendizaje por corrección y agencia acotada |
 | **Códice fractal** | Conocimiento comprimido; generación G0→G1… sin crecer de tamaño |
 | **Idiomas (CEOX)** | Roles (restaurante, médico, amigos…), dictado, correcciones |
 | **Coaching** | Curso progresivo Formación y Calidad (call center / admisiones) |
@@ -43,3 +44,22 @@ Ejemplos: «abre chat», «abre coaching», «idiomas», «investigar», «maest
 ## Curso Coaching
 
 Pestaña **Coaching**: 16 módulos (E-C-A-M, auditoría, role play, KPIs, onboarding, admisiones internacionales, plan 30 días…). Progresivo e indefinido; las prácticas alimentan el códice CEOS.
+
+
+## Vida funcional (nuevo en v6)
+
+CEOS mantiene un estado persistente independiente del chat en `data/life/`. No se presenta como conciencia: es continuidad funcional auditable. Registra pulso, estado (`awake`, `attending`, `idle`, `hibernating`), foco, hilos abiertos, aprendizaje, correcciones, propuestas de influencia y política de autonomía.
+
+Mientras la interfaz está abierta, el navegador envía un pulso cada 20 segundos a `/api/life/heartbeat`. En el lanzador local v6, además, el servidor mantiene un pulso en segundo plano (`CEOS_LIFE_BACKGROUND=1`), aunque el navegador se cierre. La reflexión local puede aparecer durante periodos de inactividad cuando existen hilos abiertos. No consulta internet de forma autónoma y no ejecuta acciones externas sin consentimiento.
+
+Endpoints principales:
+
+- `GET /api/life` — estado vital actual.
+- `POST /api/life/heartbeat` — mantener el pulso.
+- `POST /api/life/reflect` — generar una reflexión local y próximos movimientos.
+- `POST /api/life/feedback` — enseñar a CEOS mediante confirmación o corrección.
+- `POST /api/life/influence` — registrar una propuesta y su resultado.
+- `GET /api/life/events` — auditoría de eventos.
+- `POST /api/life/thread/<id>/resolve` — cerrar un hilo.
+
+La memoria vital también entra en el snapshot de Sync para no perder continuidad al mover CEOS de dispositivo o restaurar un despliegue.
