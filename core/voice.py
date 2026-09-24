@@ -107,7 +107,7 @@ class VoiceEngine:
         return (
             "Sin motor TTS. En Windows:\n"
             "  1) Cierra CEOS\n"
-            "  2) En la carpeta ceos_v5: .venv\\Scripts\\pip install pyttsx3\n"
+            "  2) En la carpeta CEOS v7: .venv\\Scripts\\pip install pyttsx3\n"
             "  3) Configuración Windows → Voz → añade voz en español si falta\n"
             "  4) Vuelve a ejecutar INICIAR_CEOS.bat"
         )

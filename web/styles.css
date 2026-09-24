@@ -962,3 +962,16 @@ button.ghost:hover { color: var(--text); border-color: rgba(255,255,255,0.18); }
   .ceos-life { grid-template-columns: 1fr; }
   .ceos-life-actions { justify-content: flex-start; }
 }
+
+
+/* CEOS v8 Agency + Adaptive Dialogue */
+.life-dashboard-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-top:14px}
+.inner-card{background:rgba(15,23,42,.55);border:1px solid rgba(148,163,184,.16);padding:16px;border-radius:12px}
+.inline-form{display:flex;gap:8px;margin-top:10px}.inline-form.stacked{display:flex;flex-direction:column}
+.inline-form input,.inner-card input,.inner-card textarea{width:100%;box-sizing:border-box;margin:6px 0 0;padding:10px;border-radius:8px;border:1px solid rgba(148,163,184,.25);background:rgba(2,6,23,.55);color:inherit}
+.agency-item{padding:10px 0;border-bottom:1px solid rgba(148,163,184,.12)}
+.agency-item:last-child{border-bottom:0}
+.agency-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+.badge-proposed{display:inline-block;padding:2px 7px;border-radius:99px;border:1px solid rgba(56,189,248,.35);font-size:.75rem}
+.badge-accepted{display:inline-block;padding:2px 7px;border-radius:99px;border:1px solid rgba(74,222,128,.35);font-size:.75rem}
+.badge-open{display:inline-block;padding:2px 7px;border-radius:99px;border:1px solid rgba(250,204,21,.35);font-size:.75rem}

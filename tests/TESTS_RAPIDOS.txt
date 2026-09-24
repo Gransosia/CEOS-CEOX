@@ -1,0 +1,34 @@
+CEOS v8 — pruebas rápidas
+
+Además de las pruebas v7: python -m unittest discover -s tests -v
+
+1) Compilación Python
+   python -m compileall -q .
+
+2) Sintaxis JS
+   node --check web/app.js
+
+3) Smoke test de Agency Core
+   python -m unittest -q tests.test_v7_agency
+
+4) Arranque local
+   INICIAR_CEOS.bat
+
+5) Comprobación HTTP tras arranque
+   /health
+   /api/agency
+   /api/life
+
+6) Flujo de vida
+   - hablar con CEOS
+   - abrir Vida
+   - aceptar/rechazar una iniciativa
+   - crear un experimento
+   - registrar una laguna de modelo
+   - generar una propuesta de evolución
+
+7) GitHub
+   - empezar con CEOS_GITHUB_WRITE=0
+   - comprobar lectura
+   - revisar una propuesta
+   - después activar rama + Pull Request

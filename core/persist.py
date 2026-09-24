@@ -36,6 +36,7 @@ def build_snapshot(
     identity=None,
     user=None,
     life=None,
+    agency=None,
 ) -> dict:
     data_dir = Path(data_dir)
     snap: dict[str, Any] = {
@@ -120,6 +121,12 @@ def build_snapshot(
         except Exception as e:
             snap["life_error"] = str(e)[:200]
 
+    if agency is not None:
+        try:
+            snap["agency"] = agency.export_bundle() if hasattr(agency, "export_bundle") else {}
+        except Exception as e:
+            snap["agency_error"] = str(e)[:200]
+
     # evolution scale snapshots file
     try:
         scale_file = data_dir / "evolve" / "scale_snapshots.json"
@@ -148,6 +155,7 @@ def restore_snapshot(
     identity=None,
     user=None,
     life=None,
+    agency=None,
 ) -> dict:
     stats = {"ok": True, "restored": []}
     data_dir = Path(data_dir)
@@ -233,6 +241,14 @@ def restore_snapshot(
             stats["restored"].append("life")
         except Exception as e:
             stats["life_error"] = str(e)[:200]
+
+    if agency is not None and snap.get("agency"):
+        try:
+            r = agency.import_bundle(snap["agency"])
+            stats["agency"] = r
+            stats["restored"].append("agency")
+        except Exception as e:
+            stats["agency_error"] = str(e)[:200]
 
     if snap.get("evolution_scale"):
         try:

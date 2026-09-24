@@ -1,4 +1,4 @@
-# CEOS v6 — Living Core
+# CEOS v7 — Living Core + Agency
 
 ## Qué cambia
 
@@ -40,7 +40,7 @@ Las acciones externas permanecen fuera de la autonomía del núcleo y requieren 
 
 ## Pulso de fondo
 
-Con `CEOS_LIFE_BACKGROUND=1`, el servidor local ejecuta un hilo ligero que llama al heartbeat aunque el navegador esté cerrado. El lanzador Windows v6 activa esta función cada 20 segundos.
+Con `CEOS_LIFE_BACKGROUND=1`, el servidor local ejecuta un hilo ligero que llama al heartbeat aunque el navegador esté cerrado. El lanzador Windows v7 activa esta función cada 20 segundos.
 
 El heartbeat no consulta internet, no utiliza un LLM y no ejecuta acciones externas. Su trabajo es actualizar el estado temporal y, cuando corresponde, activar una reflexión local sobre hilos abiertos.
 
@@ -79,3 +79,20 @@ Tampoco se ha activado una autonomía de red permanente. Internet sigue siendo u
 7. Exportar Sync y restaurarlo en otra instancia.
 
 El criterio de éxito no es que CEOS «parezca vivo», sino que su continuidad pueda comprobarse en el estado y en el registro de eventos.
+
+
+## Agencia v7
+
+El Living Core deja de ser solamente continuidad y pasa a mantener una capa de agencia funcional:
+
+- objetivos persistentes;
+- iniciativas sugeridas por el propio estado del sistema;
+- experimentos con predicción ex ante congelada;
+- registro de falsadores;
+- detección de lagunas del modelo;
+- propuestas de evolución del sistema;
+- auditoría de ciclos de agencia.
+
+La agencia no implica conciencia. Es un conjunto auditable de estados, reglas y transiciones.
+
+Regla central: **proponer no equivale a ejecutar**.

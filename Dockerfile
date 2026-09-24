@@ -25,7 +25,7 @@ RUN set -e; \
     fi; \
     mkdir -p /var/data /app/data/identity /app/data/memory /app/data/grammar /app/data/library \
       /app/data/mentor /app/data/codex /app/data/user /app/data/uploads \
-      /app/data/chat /app/data/long_memory /app/data/coaching; \
+      /app/data/chat /app/data/long_memory /app/data/coaching /app/data/life /app/data/agency /app/data/github/proposals; \
     ls -la /app; \
     ls -la /app/core | head -15; \
     test -f /app/core/server.py; \

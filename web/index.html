@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b0f19" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>CEOS — CRONOS-Espiral</title>
+  <title>CEOS v8 — CRONOS-Espiral · Living Entity</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -14,7 +14,7 @@
     <header>
       <div class="brand">
         <span class="logo">CEOS</span>
-        <span class="version">v5</span>
+        <span class="version">v8.0</span>
       </div>
       <div class="status"><span id="greeting"></span> · <span id="status">conectando…</span></div>
     </header>
@@ -30,6 +30,7 @@
       <button type="button" class="tab" data-view="research" title="Investigar un tema en internet y guardar en el códice">Investigar</button>
       <button type="button" class="tab" data-view="grammar" title="Infinitud discreta: gramática y fragmentos del motor">Infinitud</button>
       <button type="button" class="tab" data-view="sync" title="Exportar/importar corpus entre dispositivos">Sync</button>
+      <button type="button" class="tab" data-view="life" title="Continuidad, objetivos, iniciativa y evolución de CEOS">Vida</button>
       <button type="button" class="tab" data-view="help" title="Guía de pestañas y comandos de voz">Ayuda</button>
     </nav>
     <div class="voice-nav-bar" id="voice-os-bar">
@@ -56,6 +57,7 @@
               <span id="chat-engine-badge" class="chat-badge">—</span>
               <span id="chat-session-label" class="muted small">sesión</span>
               <span id="chat-memory-badge" class="chat-badge memory" title="Memoria a largo plazo">mem —</span>
+              <span id="chat-adaptive-badge" class="chat-badge" title="Adaptación conversacional">adapt —</span>
             </div>
             <div class="chat-toolbar-right">
               <button type="button" id="btn-chat-voice-toggle" class="ghost" title="Leer respuestas en voz alta">🔊</button>
@@ -73,14 +75,16 @@
             <div class="ceos-life-next" id="ceos-life-next">Preparando continuidad…</div>
             <div class="ceos-life-actions">
               <button type="button" class="ghost small-btn" id="btn-ceos-reflect">Reflexionar</button>
+              <button type="button" class="ghost small-btn" id="btn-ceos-history">Historia</button>
               <span id="ceos-life-activity" class="muted small">pulso —</span>
             </div>
+            <div id="ceos-life-history" class="ceos-life-history hidden"></div>
           </div>
 
           <div id="chat-messages" class="chat-messages" aria-live="polite">
             <div class="chat-bubble assistant">
               <div class="bubble-meta">CEOS</div>
-              <div class="bubble-body">Hola. Estoy en modo conversación. Puedes hablarme con naturalidad: preguntar por el protocolo, analizar un sistema, pedir una lección o pensar en voz alta.</div>
+              <div class="bubble-body">Hola. Estoy aquí para conversar de forma continua, no para soltarte respuestas prefabricadas. Puedo pensar contigo, enseñarte paso a paso y ajustar la dificultad según cómo avances.</div>
             </div>
           </div>
 
@@ -95,6 +99,7 @@
 
           <div class="chat-options">
             <label class="chat-opt"><input type="checkbox" id="chat-opt-long" /> Versión larga</label>
+            <label class="chat-opt chat-mode"><span>Modo</span> <select id="chat-mode"><option value="organic">Conversación</option><option value="teach">Aprender conmigo</option><option value="analysis">Análisis</option></select></label>
             <label class="chat-opt"><input type="checkbox" id="chat-opt-web" /> Buscar en internet (solo si lo pides o marcas esto)</label>
             <span id="chat-fractal-badge" class="chat-badge fractal" title="Logaritmo de re-cifrado del Codex">G0</span>
           </div>
@@ -115,6 +120,56 @@
 
       
       
+      <section id="view-life" class="view">
+        <div class="card">
+          <h2>CEOS v8 · Vida adaptativa</h2>
+          <p class="muted">Aquí puedes ver la continuidad de CEOS como sistema: objetivos, iniciativas, experimentos ex ante y lagunas de modelo. Proponer no significa ejecutar.</p>
+          <div class="stats-grid" id="agency-summary">Cargando agencia…</div>
+          <div class="life-dashboard-grid">
+            <div class="card inner-card">
+              <h3>Objetivos activos</h3>
+              <div id="agency-goals" class="result"></div>
+              <div class="inline-form">
+                <input id="agency-goal-input" type="text" placeholder="Ej.: desarrollar el motor de historias dinámicas" />
+                <button id="btn-agency-goal" type="button" class="primary">Añadir objetivo</button>
+              </div>
+            </div>
+            <div class="card inner-card">
+              <h3>Iniciativas de CEOS</h3>
+              <div id="agency-initiatives" class="result"></div>
+              <button id="btn-agency-tick" type="button">Hacer un ciclo ahora</button>
+            </div>
+            <div class="card inner-card">
+              <h3>Experimentos congelados</h3>
+              <div id="agency-experiments" class="result"></div>
+              <p class="muted small">Úsalos para registrar una predicción antes de conocer el desenlace y evitar reinterpretaciones retrospectivas.</p>
+              <button id="btn-agency-experiment" type="button">Crear experimento</button>
+            </div>
+            <div class="card inner-card">
+              <h3>Lagunas del modelo</h3>
+              <div id="agency-gaps" class="result"></div>
+              <div class="inline-form stacked">
+                <input id="agency-gap-input" type="text" placeholder="Qué no está representando bien CEOS" />
+                <button id="btn-agency-gap" type="button">Registrar laguna</button>
+              </div>
+            </div>
+            <div class="card inner-card">
+              <h3>Evolución del propio CEOS</h3>
+              <p class="muted">CEOS puede formular una propuesta de cambio. La modificación del código sigue pasando por una rama y revisión humana.</p>
+              <input id="agency-evo-desc" type="text" placeholder="Qué limitación debería intentar superar" />
+              <input id="agency-evo-target" type="text" placeholder="Componente objetivo (p. ej. core/chat.py)" />
+              <textarea id="agency-evo-change" rows="4" placeholder="Cambio sugerido, criterios de éxito y riesgos"></textarea>
+              <button id="btn-agency-evo" type="button" class="primary">Proponer evolución</button>
+            </div>
+            <div class="card inner-card">
+              <h3>Auditoría</h3>
+              <pre id="agency-audit" class="result mono" style="white-space:pre-wrap;max-height:380px;overflow:auto">Sin cargar.</pre>
+              <button id="btn-agency-audit" type="button">Actualizar auditoría</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="view-coaching" class="view">
         <div class="card">
           <h2>Curso: Coaching · Formación y Calidad (Contact Center)</h2>
@@ -553,6 +608,19 @@
           </div>
           <textarea id="sync-payload" rows="6" placeholder="Aquí aparece el JSON exportado o pega aquí un export de otro dispositivo…"></textarea>
           <div id="sync-result" class="result hidden"></div>
+        </div>
+        <div class="card">
+          <h2>GitHub — memoria externa y evolución controlada</h2>
+          <p class="muted">CEOS puede leer el repositorio configurado, conservar propuestas localmente y, solo con escritura habilitada y consentimiento, publicar una propuesta en una rama y abrir un Pull Request. El token nunca se muestra en pantalla.</p>
+          <label>Token administrativo de CEOS (solo se mantiene en esta pestaña)</label>
+          <input type="password" id="github-admin-token" autocomplete="off" placeholder="CEOS_ADMIN_TOKEN" />
+          <div id="github-status" class="stats-grid">Comprobando…</div>
+          <div class="btn-row">
+            <button id="btn-github-refresh">Actualizar GitHub</button>
+            <button id="btn-github-repo">Ver repositorio</button>
+            <button id="btn-github-proposals">Ver propuestas</button>
+          </div>
+          <pre id="github-result" class="result mono hidden" style="white-space:pre-wrap;max-height:320px;overflow:auto"></pre>
         </div>
         <div class="card">
           <h2>Acceso desde otros dispositivos</h2>

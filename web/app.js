@@ -1,4 +1,4 @@
-/* CEOS v5 — frontend multi-dispositivo */
+/* CEOS v8 — Living Entity + Adaptive Mentor + GitHub Bridge */
 const DEVICE_ID_KEY = "ceos_device_id";
 
 function getDeviceId() {
@@ -52,6 +52,7 @@ function showView(name) {
   if (name === "sync") try { refreshSync(); } catch (e) {}
   if (name === "lang") try { loadLangRoles(); } catch (e) {}
   if (name === "coaching") try { loadCoachingCourse(); } catch (e) {}
+  if (name === "life") try { loadAgencyDashboard(); } catch (e) {}
   return true;
 }
 
@@ -66,6 +67,7 @@ const VOICE_ROUTES = [
   { re: /\b(investigar|investigaci[oó]n|buscar en (internet|la red))\b/i, view: "research" },
   { re: /\b(infinitud|gram[aá]tica|c[oó]dice)\b/i, view: "grammar" },
   { re: /\b(sync|sincroniz)/i, view: "sync" },
+  { re: /\b(vida|agencia|agencia de ceos|objetivos|iniciativas)/i, view: "life" },
 ];
 
 function matchVoiceRoute(transcript) {
@@ -132,7 +134,7 @@ function startVoiceNavigation() {
       const labels = {
         chat: "Chat", home: "Inicio", maestro: "Maestro", case: "Caso",
         learn: "Aprendizaje", lang: "Idiomas", coaching: "Coaching",
-        research: "Investigar", grammar: "Infinitud", sync: "Sync",
+        research: "Investigar", grammar: "Infinitud", sync: "Sync", life: "Vida",
       };
       speakStatus("Abriendo " + (labels[view] || view));
       if (status) status.textContent = "→ " + (labels[view] || view);
@@ -178,6 +180,7 @@ function focusChat() {
   const input = document.getElementById("chat-input");
   if (input) setTimeout(() => input.focus(), 80);
   refreshChatBadge();
+  api("/api/chat/adaptive").then(r => refreshAdaptiveBadge(r.adaptive || {})).catch(() => {});
 }
 
 function refreshChatBadge(engine) {
@@ -207,10 +210,19 @@ function appendChatBubble(role, content, meta) {
     fb.querySelectorAll("button").forEach(btn => {
       btn.addEventListener("click", async () => {
         try {
+          const feedbackType = btn.getAttribute("data-feedback");
           await api("/api/life/feedback", {
             method: "POST",
             body: JSON.stringify({
-              type: btn.getAttribute("data-feedback"),
+              type: feedbackType,
+              text: (content || "").slice(-500),
+              session_id: getChatSessionId(),
+            }),
+          });
+          await api("/api/chat/feedback", {
+            method: "POST",
+            body: JSON.stringify({
+              type: feedbackType,
               text: (content || "").slice(-500),
               session_id: getChatSessionId(),
             }),
@@ -269,7 +281,28 @@ function renderLifeState(state) {
   }
   const moves = state.next_moves || [];
   if (next) next.textContent = moves.length ? "Siguiente movimiento: " + moves[0].label : "Observando y conservando continuidad…";
-  if (activity) activity.textContent = "pulso " + (state.pulse || 0) + " · " + ((state.relationship || {}).turns || 0) + " turnos";
+  if (activity) {
+    const bio = state.autobiography || {};
+    activity.textContent = "pulso " + (state.pulse || 0) + " · " + ((state.relationship || {}).turns || 0) + " turnos · " + (bio.experience_count || 0) + " experiencias";
+  }
+}
+
+async function showCEOSAutobiography() {
+  const box = document.getElementById("ceos-life-history");
+  if (!box) return;
+  box.classList.remove("hidden");
+  box.textContent = "Recuperando mi historia funcional…";
+  try {
+    const r = await api("/api/life/autobiography");
+    const bio = r.autobiography || {};
+    const milestones = (bio.milestones || []).slice(0, 8);
+    box.innerHTML = `<strong>Historia funcional de CEOS</strong><p class="muted">${escapeHtml(bio.summary || "Sin resumen disponible.")}</p>` +
+      `<div class="small muted">${milestones.length ? "Experiencias recientes:" : "Todavía no hay experiencias registradas."}</div>` +
+      (milestones.length ? `<ol class="list">${milestones.map(m => `<li><span class="tag">${escapeHtml(m.kind || "experiencia")}</span> ${escapeHtml(m.text || "")}</li>`).join("")}</ol>` : "") +
+      `<div class="small muted">Límite: ${escapeHtml(bio.identity_boundary || "continuidad funcional")}</div>`;
+  } catch (e) {
+    box.textContent = "No pude recuperar la historia: " + e.message;
+  }
 }
 
 async function refreshLifeState(silent = true) {
@@ -356,6 +389,7 @@ async function sendChatMessage(text) {
   try {
     const longOpt = document.getElementById("chat-opt-long");
     const webOpt = document.getElementById("chat-opt-web");
+    const modeOpt = document.getElementById("chat-mode");
     const res = await api("/api/chat", {
       method: "POST",
       body: JSON.stringify({
@@ -363,6 +397,7 @@ async function sendChatMessage(text) {
         session_id: getChatSessionId(),
         long: !!(longOpt && longOpt.checked),
         web: !!(webOpt && webOpt.checked),
+        mode: (modeOpt && modeOpt.value) || "organic",
       }),
     });
     setChatTyping(false);
@@ -371,6 +406,7 @@ async function sendChatMessage(text) {
     if (res.reply) speakChatText(res.reply);
     refreshMemoryBadge();
     refreshFractalBadge();
+    refreshAdaptiveBadge(res.adaptive || {});
     renderLifeState(res.life || {});
     refreshFractalBadge(res.fractal);
     if (res.web && res.web_meta && res.web_meta.ok) {
@@ -614,6 +650,16 @@ async function refreshMemoryBadge() {
   }
 }
 
+function refreshAdaptiveBadge(payload) {
+  const badge = document.getElementById("chat-adaptive-badge");
+  if (!badge) return;
+  const turns = payload && payload.turns != null ? payload.turns : null;
+  const current = payload && payload.current ? payload.current : {};
+  const topic = current.topic || "adapt";
+  badge.textContent = turns != null ? "adapt " + turns : "adapt —";
+  badge.title = "Tema activo: " + topic;
+}
+
 function bindChatUI() {
   const form = document.getElementById("chat-form");
   const input = document.getElementById("chat-input");
@@ -635,6 +681,12 @@ function bindChatUI() {
   if (sendBtn) {
     sendBtn.type = "button";
     sendBtn.addEventListener("click", doSend);
+  }
+  const modeSelect = document.getElementById("chat-mode");
+  if (modeSelect) {
+    const savedMode = localStorage.getItem("ceos_chat_mode_v8");
+    if (savedMode && ["organic", "teach", "analysis"].includes(savedMode)) modeSelect.value = savedMode;
+    modeSelect.addEventListener("change", () => localStorage.setItem("ceos_chat_mode_v8", modeSelect.value));
   }
   if (input) {
     input.addEventListener("input", autoSizeChatInput);
@@ -699,6 +751,7 @@ function bindChatUI() {
     });
   }
   document.getElementById("btn-ceos-reflect")?.addEventListener("click", reflectCEOSLife);
+  document.getElementById("btn-ceos-history")?.addEventListener("click", showCEOSAutobiography);
   startCEOSLifePulse();
 
   const btnVoice = document.getElementById("btn-chat-voice-toggle");
@@ -1583,6 +1636,63 @@ document.getElementById("btn-gen-case").addEventListener("click", () => generate
 document.getElementById("btn-gen-q").addEventListener("click", () => generate("question"));
 document.getElementById("btn-gen-traj").addEventListener("click", () => generate("trajectory"));
 
+// ---------- GitHub ----------
+let githubAdminToken = "";
+function githubHeaders() {
+  const input = document.getElementById("github-admin-token");
+  const value = (input?.value || githubAdminToken || "").trim();
+  if (value) githubAdminToken = value;
+  return value ? { "X-CEOS-Admin-Token": value } : {};
+}
+
+async function githubApi(path, options = {}) {
+  const opts = Object.assign({}, options);
+  opts.headers = Object.assign({}, options.headers || {}, githubHeaders());
+  return api(path, opts);
+}
+
+async function refreshGitHubStatus() {
+  const box = document.getElementById("github-status");
+  if (!box) return;
+  try {
+    const st = await api("/api/github/status");
+    const enabled = !!st.enabled;
+    box.innerHTML = `
+      <div class="stat"><div class="n">${enabled ? "✓" : "—"}</div><div class="l">Conexión</div></div>
+      <div class="stat"><div class="n">${escapeHtml(st.repository || "—")}</div><div class="l">Repositorio</div></div>
+      <div class="stat"><div class="n">${st.write_enabled ? "sí" : "no"}</div><div class="l">Escritura</div></div>
+      <div class="stat"><div class="n">${st.proposals_local || 0}</div><div class="l">Propuestas locales</div></div>`;
+  } catch (e) {
+    box.textContent = "GitHub: " + e.message;
+  }
+}
+
+async function showGitHubProposals() {
+  const box = document.getElementById("github-result");
+  if (!box) return;
+  box.classList.remove("hidden");
+  try {
+    const r = await githubApi("/api/github/proposals");
+    box.textContent = r.proposals?.length ? JSON.stringify(r.proposals, null, 2) : "No hay propuestas locales.";
+  } catch (e) {
+    box.textContent = "Error: " + e.message;
+  }
+}
+
+document.getElementById("btn-github-refresh")?.addEventListener("click", refreshGitHubStatus);
+document.getElementById("btn-github-proposals")?.addEventListener("click", showGitHubProposals);
+document.getElementById("btn-github-repo")?.addEventListener("click", async () => {
+  const box = document.getElementById("github-result");
+  if (!box) return;
+  box.classList.remove("hidden");
+  try {
+    const r = await githubApi("/api/github/repo");
+    box.textContent = JSON.stringify(r.repo || r, null, 2);
+  } catch (e) {
+    box.textContent = "Error: " + e.message;
+  }
+});
+
 // ---------- Sync ----------
 async function refreshSync() {
   const st = await api("/api/sync/status");
@@ -1662,6 +1772,7 @@ function escapeHtml(s) {
     }).catch(function () { refreshChatBadge("local"); });
     await loadMeta();
     await refreshHome();
+    await refreshGitHubStatus();
   } catch (e) {
     document.getElementById("status").textContent = "servidor no disponible";
     console.error(e);
@@ -2140,3 +2251,67 @@ function bindChatHub() {
 
   refreshUserBadge();
 }
+
+
+// ---------- CEOS v7 Agency + v8 Adaptive Dialogue ----------
+async function loadAgencyDashboard(){
+  const ids = ["agency-summary","agency-goals","agency-initiatives","agency-experiments","agency-gaps"];
+  ids.forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent="Cargando…"; });
+  try{
+    const [a,g,i,e,m] = await Promise.all([
+      api("/api/agency"), api("/api/agency/goals?status=active"),
+      api("/api/agency/initiatives?status=proposed"), api("/api/agency/experiments?status=open"),
+      api("/api/agency/model-gaps?status=open")
+    ]);
+    const st=a.state||{}; const metrics=st.metrics||{};
+    const summary=document.getElementById("agency-summary");
+    if(summary) summary.innerHTML =
+      `<div><strong>Organismo</strong><br><span class="small">${escapeHtml(st.organism_id||"—")}</span></div>`+
+      `<div><strong>Ciclos</strong><br>${st.cycle||0}</div>`+
+      `<div><strong>Iniciativas</strong><br>${metrics.initiatives_proposed||0} propuestas</div>`+
+      `<div><strong>Experimentos</strong><br>${metrics.experiments_created||0} congelados</div>`+
+      `<div><strong>Lagunas</strong><br>${m.gaps?.length||0} abiertas</div>`;
+    renderAgencyGoals(g.goals||[]); renderAgencyInitiatives(i.initiatives||[]); renderAgencyExperiments(e.experiments||[]); renderAgencyGaps(m.gaps||[]); renderAgencyAudit();
+  }catch(e){
+    const summary=document.getElementById("agency-summary"); if(summary) summary.textContent="No se pudo cargar la agencia: "+e.message;
+  }
+}
+function renderAgencyGoals(goals){
+  const box=document.getElementById("agency-goals"); if(!box) return;
+  if(!goals.length){box.innerHTML="<span class='muted'>No hay objetivos activos.</span>";return;}
+  box.innerHTML=goals.map(g=>`<div class="agency-item"><strong>${escapeHtml(g.title||"")}</strong><div class="small muted">Progreso ${Math.round((g.progress||0)*100)}% · prioridad ${g.priority??"—"}</div><div class="agency-actions"><button class="ghost" data-goal-done="${escapeHtml(g.id)}">Completar</button></div></div>`).join("");
+  box.querySelectorAll("[data-goal-done]").forEach(b=>b.addEventListener("click",async()=>{try{await api("/api/agency/goals/"+encodeURIComponent(b.dataset.goalDone),{method:"PATCH",body:JSON.stringify({progress:1,status:"completed",note:"Completado desde Vida"})});loadAgencyDashboard();}catch(e){alert(e.message)}}));
+}
+function renderAgencyInitiatives(items){
+  const box=document.getElementById("agency-initiatives"); if(!box) return;
+  if(!items.length){box.innerHTML="<span class='muted'>No hay iniciativas pendientes.</span>";return;}
+  box.innerHTML=items.slice(0,8).map(i=>`<div class="agency-item"><span class="badge-proposed">${escapeHtml(i.status||"proposed")}</span> <strong>${escapeHtml(i.title||"")}</strong><div class="small muted">${escapeHtml(i.reason||"")}</div><div class="small">${escapeHtml(i.action||"")}</div><div class="agency-actions"><button data-init-ok="${escapeHtml(i.id)}">Aceptar</button><button data-init-no="${escapeHtml(i.id)}" class="ghost">Rechazar</button></div></div>`).join("");
+  box.querySelectorAll("[data-init-ok]").forEach(b=>b.addEventListener("click",()=>decideAgencyInitiative(b.dataset.initOk,"accept")));
+  box.querySelectorAll("[data-init-no]").forEach(b=>b.addEventListener("click",()=>decideAgencyInitiative(b.dataset.initNo,"reject")));
+}
+async function decideAgencyInitiative(id,decision){try{await api("/api/agency/initiatives/"+encodeURIComponent(id)+"/decision",{method:"POST",body:JSON.stringify({decision})});loadAgencyDashboard();refreshLifeState(true);}catch(e){alert(e.message)}}
+function renderAgencyExperiments(items){
+  const box=document.getElementById("agency-experiments"); if(!box)return;
+  if(!items.length){box.innerHTML="<span class='muted'>No hay experimentos abiertos.</span>";return;}
+  box.innerHTML=items.slice(0,6).map(x=>`<div class="agency-item"><span class="badge-open">abierto</span> <strong>${escapeHtml(x.title||"")}</strong><div class="small muted">Congelado ${escapeHtml(String(x.frozen_at||"").slice(0,19))}</div><div class="small">Predicciones: ${(x.predictions||[]).length} · falsadores: ${(x.falsifiers||[]).length}</div></div>`).join("");
+}
+function renderAgencyGaps(items){
+  const box=document.getElementById("agency-gaps"); if(!box)return;
+  if(!items.length){box.innerHTML="<span class='muted'>No hay lagunas abiertas.</span>";return;}
+  box.innerHTML=items.slice(0,6).map(g=>`<div class="agency-item"><strong>${escapeHtml(g.description||"")}</strong><div class="small muted">${escapeHtml(g.component||"")} · severidad ${g.severity??"—"}</div><div class="small">${escapeHtml(g.evidence||"")}</div></div>`).join("");
+}
+async function renderAgencyAudit(){
+  const box=document.getElementById("agency-audit"); if(!box)return;
+  try{const d=await api("/api/agency/audit?limit=80");box.textContent=(d.events||[]).slice(-80).reverse().map(e=>`${e.ts||""} · ${e.kind||""} · ${e.source||""}\n${JSON.stringify(e.payload||{})}`).join("\n\n")||"Sin eventos.";}catch(e){box.textContent="Error: "+e.message;}
+}
+function bindAgencyUI(){
+  const goalBtn=document.getElementById("btn-agency-goal");
+  if(goalBtn&&!goalBtn.__bound){goalBtn.__bound=true;goalBtn.addEventListener("click",async()=>{const input=document.getElementById("agency-goal-input");const title=(input?.value||"").trim();if(!title)return;try{await api("/api/agency/goals",{method:"POST",body:JSON.stringify({title})});input.value="";loadAgencyDashboard();}catch(e){alert(e.message)}})}
+  const tick=document.getElementById("btn-agency-tick"); if(tick&&!tick.__bound){tick.__bound=true;tick.addEventListener("click",async()=>{try{await api("/api/agency/tick",{method:"POST",body:JSON.stringify({reason:"manual-ui"})});loadAgencyDashboard();}catch(e){alert(e.message)}})}
+  const exp=document.getElementById("btn-agency-experiment"); if(exp&&!exp.__bound){exp.__bound=true;exp.addEventListener("click",async()=>{const title=prompt("Título del experimento:");if(!title)return;const prediction=prompt("Predicción ex ante (qué esperas que pase):");if(!prediction)return;const falsifier=prompt("Qué observarías para considerar debilitada la hipótesis:");try{await api("/api/agency/experiments",{method:"POST",body:JSON.stringify({title,baseline:{recorded_at:new Date().toISOString()},predictions:[{text:prediction}],falsifiers:[falsifier||""]})});loadAgencyDashboard();}catch(e){alert(e.message)}})}
+  const gap=document.getElementById("btn-agency-gap"); if(gap&&!gap.__bound){gap.__bound=true;gap.addEventListener("click",async()=>{const input=document.getElementById("agency-gap-input");const description=(input?.value||"").trim();if(!description)return;try{await api("/api/agency/model-gaps",{method:"POST",body:JSON.stringify({description,component:"user"})});input.value="";loadAgencyDashboard();}catch(e){alert(e.message)}})}
+  const evo=document.getElementById("btn-agency-evo"); if(evo&&!evo.__bound){evo.__bound=true;evo.addEventListener("click",async()=>{const desc=(document.getElementById("agency-evo-desc")?.value||"").trim();const target=(document.getElementById("agency-evo-target")?.value||"").trim();const change=(document.getElementById("agency-evo-change")?.value||"").trim();if(!desc||!target||!change){alert("Completa descripción, objetivo y cambio sugerido.");return;}try{const r=await api("/api/agency/evolution-proposals",{method:"POST",body:JSON.stringify({description:desc,target,suggested_change:change})});alert("Propuesta creada: "+(r.proposal?.id||""));loadAgencyDashboard();}catch(e){alert(e.message)}})}
+  const aud=document.getElementById("btn-agency-audit"); if(aud&&!aud.__bound){aud.__bound=true;aud.addEventListener("click",renderAgencyAudit)}
+}
+if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",bindAgencyUI);}else{bindAgencyUI();}
+setTimeout(bindAgencyUI,1000);

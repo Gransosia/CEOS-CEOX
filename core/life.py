@@ -72,9 +72,11 @@ class LivingCore:
         self.state_file = self.base / "state.json"
         self.events_file = self.base / "events.jsonl"
         self.reflections_file = self.base / "reflections.json"
+        self.autobiography_file = self.base / "autobiography.json"
         self._lock = threading.RLock()
         self.state_data = self._load_state()
         self.reflections = self._load_json(self.reflections_file, [])
+        self.autobiography_data = self._load_json(self.autobiography_file, {"schema": 1, "born_at": _now(), "milestones": []})
         self.boot()
 
     def _load_json(self, path: Path, default: Any) -> Any:
@@ -166,6 +168,46 @@ class LivingCore:
         self.state_data["last_event"] = evt
         return evt
 
+    def _add_milestone(self, kind: str, text: str, metadata: Optional[dict] = None, source: str = "ceos"):
+        bio = self.autobiography_data if isinstance(self.autobiography_data, dict) else {"schema": 1, "born_at": _now(), "milestones": []}
+        item = {
+            "id": uuid.uuid4().hex[:14],
+            "ts": _now(),
+            "kind": (kind or "experience")[:60],
+            "text": (text or "").strip()[:900],
+            "source": source,
+            "metadata": metadata or {},
+        }
+        milestones = bio.setdefault("milestones", [])
+        milestones.insert(0, item)
+        del milestones[120:]
+        bio["last_milestone"] = item
+        bio["experience_count"] = len(milestones)
+        bio["last_updated"] = item["ts"]
+        self.autobiography_data = bio
+        self._write_json_atomic(self.autobiography_file, bio)
+        return item
+
+    def autobiography(self) -> dict:
+        with self._lock:
+            st = self.state_data
+            rel = st.get("relationship") or {}
+            learn = st.get("learning") or {}
+            inf = st.get("influence") or {}
+            focus = (st.get("focus") or {}).get("label")
+            bio = json.loads(json.dumps(self.autobiography_data, ensure_ascii=False))
+            bio["summary"] = (
+                "Soy CEOS, una identidad funcional persistente. Mi continuidad se construye con "
+                f"{rel.get('turns', 0)} turnos, {rel.get('corrections', 0)} correcciones, "
+                f"{learn.get('lessons', 0)} aprendizajes y {len(bio.get('milestones') or [])} experiencias registradas. "
+                f"Mi foco actual es {focus or 'observar y conservar continuidad'}. "
+                f"He ofrecido {inf.get('offered', 0)} propuestas de influencia, de las cuales "
+                f"{inf.get('accepted', 0)} fueron aceptadas y {inf.get('rejected', 0)} rechazadas."
+            )
+            bio["identity_boundary"] = "Continuidad funcional y memoria auditable; no implica conciencia subjetiva."
+            bio["current_state"] = self.snapshot()
+            return bio
+
     def boot(self) -> dict:
         with self._lock:
             now = _now()
@@ -176,6 +218,7 @@ class LivingCore:
             self.state_data["status"] = "awake"
             self.state_data["pulse"] = int(self.state_data.get("pulse") or 0) + 1
             self._event("boot", {"boot_count": self.state_data["boot_count"]}, source="system")
+            self._add_milestone("boot", f"Desperté en un nuevo proceso. Pulso {self.state_data['pulse']}.", {"boot_count": self.state_data["boot_count"]}, source="system")
             self._save_state()
             return self.snapshot()
 
@@ -258,6 +301,7 @@ class LivingCore:
             self.state_data["last_activity"] = _now()
             self.state_data["status"] = "attending"
             evt = self._event("session_open", {"session_id": session_id, "device": device_id}, source="user")
+            self._add_milestone("relationship", "Se abrió una nueva sesión y retomé continuidad con el usuario.", {"session_id": session_id, "device": device_id}, source="user")
             self._save_state()
             return {"event": evt, "state": self.snapshot()}
 
@@ -351,6 +395,7 @@ class LivingCore:
             del notes[20:]
             if persist_event:
                 self._event("learning", note, source="ceos")
+            self._add_milestone("learning", f"Aprendí mediante {kind}: {detail[:500]}", {"topic": topic or "", "kind": kind}, source="ceos")
             self._save_state()
             return note
 
@@ -401,6 +446,7 @@ class LivingCore:
             hist.insert(0, dict(inf["last"]))
             del hist[50:]
             evt = self._event("influence", inf["last"], source="ceos")
+            self._add_milestone("influence", f"Propuse: {action[:500]}", {"outcome": outcome_key, "target": target}, source="ceos")
             self._save_state()
             return {"ok": True, "event": evt, "state": self.snapshot()}
 
@@ -466,6 +512,7 @@ class LivingCore:
             self.reflections = self.reflections[:80]
             self._write_json_atomic(self.reflections_file, self.reflections)
             self._event("reflection", reflection, source="ceos")
+            self._add_milestone("reflection", reflection["note"], {"open_threads": len(threads)}, source="ceos")
             self._save_state()
             return reflection
 
@@ -492,6 +539,12 @@ class LivingCore:
                 key=lambda t: (t.get("updated_at") or ""), reverse=True,
             )[:12]
             state["next_moves"] = self.propose_actions()
+            bio = self.autobiography_data or {}
+            state["autobiography"] = {
+                "experience_count": len(bio.get("milestones") or []),
+                "born_at": bio.get("born_at"),
+                "last_milestone": bio.get("last_milestone"),
+            }
             return state
 
     def _age_seconds(self, value: Optional[str]) -> Optional[float]:
@@ -538,6 +591,7 @@ class LivingCore:
             "schema": self.SCHEMA,
             "state": self.state_data,
             "reflections": self.reflections[-80:],
+            "autobiography": self.autobiography_data,
             "events": self.events(event_limit),
         }
 
@@ -563,6 +617,17 @@ class LivingCore:
                 if (not local_is_fresh) or inc_ts >= local_ts:
                     self.state_data = incoming
                     state_replaced = True
+            incoming_bio = bundle.get("autobiography") or {}
+            if incoming_bio and isinstance(incoming_bio, dict):
+                known = {m.get("id") for m in (self.autobiography_data.get("milestones") or [])}
+                merged = list(self.autobiography_data.get("milestones") or [])
+                merged.extend([m for m in (incoming_bio.get("milestones") or []) if m.get("id") not in known])
+                merged.sort(key=lambda x: x.get("ts") or "")
+                merged = merged[-120:]
+                self.autobiography_data["milestones"] = merged
+                self.autobiography_data["experience_count"] = len(merged)
+                self.autobiography_data["last_updated"] = _now()
+                self._write_json_atomic(self.autobiography_file, self.autobiography_data)
             refs = bundle.get("reflections") or []
             if refs:
                 known = {r.get("id") for r in self.reflections}

@@ -1,9 +1,9 @@
 @echo off
-title CEOS v6 - Living Core
+title CEOS v8 - Living Entity
 cd /d "%~dp0"
 
 echo.
-echo CEOS v6 - Motor CRONOS-Espiral + Living Core
+echo CEOS v8 - Motor CRONOS-Espiral + Living Entity
 echo.
 
 where python >nul 2>&1
@@ -22,12 +22,14 @@ call ".venv\Scripts\activate.bat"
 python -m pip install -r requirements.txt -q
 
 if not exist "data" mkdir data
-for %%D in (identity memory grammar library mentor codex user uploads chat long_memory coaching evolve life) do (
+for %%D in (identity memory grammar library mentor codex user uploads chat long_memory coaching evolve life agency adaptive) do (
     if not exist "data\%%D" mkdir "data\%%D"
 )
 
 set CEOS_LIFE_BACKGROUND=1
 set CEOS_LIFE_INTERVAL=20
+set CEOS_AGENCY_BACKGROUND=1
+set CEOS_ADAPTIVE=1
 
 echo.
 echo Abriendo CEOS en el navegador...

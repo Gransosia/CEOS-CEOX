@@ -9,3 +9,11 @@ services:
         value: /var/data
     # Persistent Disk: en plan de pago, crea disco y monta en /var/data
     # En Free el disco es efímero: usa pestaña Sync (export/import) como backup
+
+    # Opcionales (configúralos en Render como secretos/variables):
+    # - CEOS_ADMIN_TOKEN
+    # - CEOS_GITHUB_TOKEN
+    # - CEOS_GITHUB_REPOSITORY
+    # - CEOS_GITHUB_BRANCH=main
+    # - CEOS_GITHUB_WRITE=0
+    # - CEOS_GITHUB_ALLOW_WORKFLOWS=0

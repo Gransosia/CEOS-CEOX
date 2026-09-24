@@ -1,5 +1,5 @@
 """
-Servidor local multi-dispositivo del Motor CRONOS-Espiral v5.
+Servidor multi-dispositivo de CEOS v8 — Living Entity + Adaptive Mentor.
 
 - Accesible desde cualquier dispositivo de la red local (PC, Android, iOS).
 - Endpoints REST para identidad, casos, hitos, trayectorias, gramática y sync.
@@ -30,6 +30,9 @@ from .long_memory import LongMemory
 from .evolve import EvolutionEngine
 from .evolution_scale import EvolutionScale
 from .life import LivingCore
+from .github_bridge import GitHubBridge
+from .agency import AgencyCore
+from .adaptive import AdaptiveCore
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = BASE_DIR / "web"
@@ -65,7 +68,7 @@ app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200 MB por petición (lo
 def _ensure_data_dirs():
     """Crea data/ y subcarpetas (necesario cuando arranca gunicorn y no se llama main())."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    for sub in ("identity", "memory", "grammar", "library", "mentor", "codex", "user", "uploads", "chat", "long_memory", "evolve", "life"):
+    for sub in ("identity", "memory", "grammar", "library", "mentor", "codex", "user", "uploads", "chat", "long_memory", "evolve", "life", "agency"):
         (DATA_DIR / sub).mkdir(exist_ok=True)
 
 
@@ -174,6 +177,9 @@ def get_long_memory():
 
 
 _life_core = None
+_agency_core = None
+_github_bridge = None
+_adaptive_core = None
 
 
 def get_life():
@@ -182,6 +188,30 @@ def get_life():
     if _life_core is None:
         _life_core = LivingCore(base_path=str(DATA_DIR / "life"))
     return _life_core
+
+
+def get_agency():
+    """Agencia persistente de CEOS v7: objetivos, iniciativas, experimentos y evolución."""
+    global _agency_core
+    if _agency_core is None:
+        _agency_core = AgencyCore(base_path=str(DATA_DIR / "agency"))
+    return _agency_core
+
+
+def get_adaptive():
+    """Modelo persistente de adaptación conversacional y pedagógica de CEOS v8."""
+    global _adaptive_core
+    if _adaptive_core is None:
+        _adaptive_core = AdaptiveCore(base_path=str(DATA_DIR / "adaptive"))
+    return _adaptive_core
+
+
+def get_github():
+    """Puente GitHub compartido: lectura + propuestas; escritura solo con consentimiento y flag explícito."""
+    global _github_bridge
+    if _github_bridge is None:
+        _github_bridge = GitHubBridge(base_path=str(DATA_DIR / "github"))
+    return _github_bridge
 
 
 def get_chat():
@@ -196,6 +226,8 @@ def get_chat():
             long_memory=get_long_memory(),
             library=get_library(),
             life=get_life(),
+            agency=get_agency(),
+            adaptive=get_adaptive(),
         )
     return g.chat
 
@@ -259,10 +291,18 @@ def health():
         life = {}
     return jsonify({
         "ok": True,
-        "service": "ceos-v6",
-        "version": "6.0.0-living",
+        "service": "ceos",
+        "version": "8.0.0-adaptive",
         "web": (WEB_DIR / "index.html").exists(),
         "life": life,
+        "agency": {
+            "version": "7.0.0-agency",
+            "cycle": get_agency().snapshot().get("cycle"),
+            "active_goals": len(get_agency().goals("active")),
+            "open_initiatives": len(get_agency().initiatives("proposed")),
+            "open_experiments": len(get_agency().experiments("open")),
+        },
+        "adaptive": get_adaptive().profile_snapshot(),
     })
 
 
@@ -462,6 +502,7 @@ def api_sync_export():
             identity=get_identity(),
             user=get_user(),
             life=get_life(),
+            agency=get_agency(),
         )
     else:
         payload = get_memory().export_all()
@@ -486,6 +527,7 @@ def api_sync_import():
             identity=get_identity(),
             user=get_user(),
             life=get_life(),
+            agency=get_agency(),
         )
     else:
         stats = get_memory().merge_from(foreign)
@@ -517,6 +559,7 @@ def api_sync_status():
         "server_time": datetime.now(timezone.utc).isoformat(),
         "lan_ip": get_lan_ip(),
         "life": get_life().stats(),
+        "agency": {"cycle": get_agency().snapshot().get("cycle"), "goals": len(get_agency().goals("active")), "initiatives": len(get_agency().initiatives("proposed")), "experiments": len(get_agency().experiments("open"))},
     })
 
 
@@ -527,10 +570,21 @@ def api_life_state():
     return jsonify({"ok": True, "state": get_life().snapshot(), "stats": get_life().stats()})
 
 
+@app.route("/api/life/autobiography")
+def api_life_autobiography():
+    return jsonify({"ok": True, "autobiography": get_life().autobiography()})
+
+
 @app.route("/api/life/heartbeat", methods=["POST"])
 def api_life_heartbeat():
     data = request.get_json(silent=True) or {}
-    return jsonify({"ok": True, "state": get_life().heartbeat(reason=data.get("reason") or "api")})
+    state = get_life().heartbeat(reason=data.get("reason") or "api")
+    try:
+        agency = get_agency()
+        agency_result = agency.tick(state, reason=data.get("reason") or "api")
+    except Exception as exc:
+        agency_result = {"ok": False, "error": str(exc)[:180]}
+    return jsonify({"ok": True, "state": state, "agency": agency_result})
 
 
 @app.route("/api/life/reflect", methods=["POST"])
@@ -573,6 +627,245 @@ def api_life_events():
 @app.route("/api/life/thread/<thread_id>/resolve", methods=["POST"])
 def api_life_thread_resolve(thread_id):
     return jsonify(get_life().resolve_thread(thread_id))
+
+
+# ---------- Agencia CEOS v7 ----------
+@app.route("/api/agency")
+def api_agency_state():
+    ag = get_agency()
+    return jsonify({"ok": True, "state": ag.snapshot(), "initiatives": ag.initiatives("proposed"), "gaps": ag.model_gaps("open")})
+
+
+@app.route("/api/agency/tick", methods=["POST"])
+def api_agency_tick():
+    data = request.get_json(silent=True) or {}
+    return jsonify({"ok": True, "result": get_agency().tick(get_life().snapshot(), reason=data.get("reason") or "manual")})
+
+
+@app.route("/api/agency/goals", methods=["GET", "POST"])
+def api_agency_goals():
+    ag = get_agency()
+    if request.method == "GET":
+        return jsonify({"ok": True, "goals": ag.goals(request.args.get("status"))})
+    data = request.get_json(force=True) or {}
+    try:
+        goal = ag.add_goal(data.get("title") or data.get("goal") or "", priority=data.get("priority", 0.7), source="user")
+        get_life().record_learning("goal", f"Objetivo registrado: {goal.get('title')}", topic=goal.get("title"))
+        return jsonify({"ok": True, "goal": goal}), 201
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@app.route("/api/agency/goals/<goal_id>", methods=["PATCH"])
+def api_agency_goal_update(goal_id):
+    data = request.get_json(force=True) or {}
+    try:
+        return jsonify({"ok": True, "goal": get_agency().update_goal(goal_id, progress=data.get("progress"), status=data.get("status"), note=data.get("note") or "")})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@app.route("/api/agency/initiatives")
+def api_agency_initiatives():
+    return jsonify({"ok": True, "initiatives": get_agency().initiatives(request.args.get("status"), request.args.get("limit", 50, type=int))})
+
+
+@app.route("/api/agency/initiatives/<initiative_id>/decision", methods=["POST"])
+def api_agency_initiative_decision(initiative_id):
+    data = request.get_json(force=True) or {}
+    try:
+        item = get_agency().decide_initiative(initiative_id, data.get("decision") or "", data.get("note") or "")
+        get_life().record_influence("agency", item.get("action") or item.get("title") or "", outcome=("accepted" if item.get("status") == "accepted" else "rejected" if item.get("status") == "rejected" else "unknown"), target=initiative_id)
+        return jsonify({"ok": True, "initiative": item})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@app.route("/api/agency/experiments", methods=["GET", "POST"])
+def api_agency_experiments():
+    ag = get_agency()
+    if request.method == "GET":
+        return jsonify({"ok": True, "experiments": ag.experiments(request.args.get("status"))})
+    data = request.get_json(force=True) or {}
+    try:
+        exp = ag.create_experiment(data.get("title") or "Experimento CEOS", data.get("baseline") or {}, data.get("predictions") or [], data.get("falsifiers") or [], source="user")
+        return jsonify({"ok": True, "experiment": exp}), 201
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@app.route("/api/agency/experiments/<experiment_id>/resolve", methods=["POST"])
+def api_agency_experiment_resolve(experiment_id):
+    data = request.get_json(force=True) or {}
+    try:
+        return jsonify({"ok": True, "experiment": get_agency().resolve_experiment(experiment_id, data.get("outcome") or {}, data.get("error_classification"))})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@app.route("/api/agency/model-gaps", methods=["GET", "POST"])
+def api_agency_model_gaps():
+    ag = get_agency()
+    if request.method == "GET":
+        return jsonify({"ok": True, "gaps": ag.model_gaps(request.args.get("status", "open"))})
+    data = request.get_json(force=True) or {}
+    try:
+        gap = ag.add_model_gap(data.get("description") or "", data.get("evidence") or "", component=data.get("component") or "ontology", severity=data.get("severity", 0.6), source="user")
+        return jsonify({"ok": True, "gap": gap}), 201
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@app.route("/api/agency/model-gaps/<gap_id>/close", methods=["POST"])
+def api_agency_model_gap_close(gap_id):
+    data = request.get_json(silent=True) or {}
+    try:
+        return jsonify({"ok": True, "gap": get_agency().close_model_gap(gap_id, data.get("note") or "")})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@app.route("/api/agency/evolution-proposals", methods=["GET", "POST"])
+def api_agency_evolution_proposals():
+    ag = get_agency()
+    if request.method == "GET":
+        return jsonify({"ok": True, "proposals": ag.evolution_proposals(request.args.get("limit", 30, type=int))})
+    data = request.get_json(force=True) or {}
+    try:
+        proposal = ag.create_evolution_proposal(data.get("description") or "", data.get("target") or "", data.get("suggested_change") or "", risk=data.get("risk") or "medium", source="user")
+        # Also prepare the proposal in the existing GitHub proposal store, but do not publish.
+        try:
+            gh = get_github()
+            if gh.repository and gh.token:
+                gh_proposal = gh.propose_file(
+                    f"proposals/ceos/{proposal['id']}.md",
+                    "# Propuesta de evolución CEOS\n\n"
+                    f"Descripción: {proposal['description']}\n\n"
+                    f"Objetivo: {proposal['target']}\n\n"
+                    f"Cambio sugerido: {proposal['suggested_change']}\n\n"
+                    f"Riesgo: {proposal['risk']}\n",
+                    f"CEOS evolution proposal {proposal['id']}",
+                    reason="Propuesta v7 generada para revisión humana antes de modificar el código.",
+                )
+                proposal["github_proposal"] = gh_proposal
+        except Exception:
+            pass
+        return jsonify({"ok": True, "proposal": proposal}), 201
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@app.route("/api/agency/audit")
+def api_agency_audit():
+    return jsonify({"ok": True, "events": get_agency().audit(request.args.get("limit", 200, type=int))})
+
+
+# ---------- Guard de administración para acciones GitHub online ----------
+def _github_admin_guard():
+    expected = (_os.environ.get("CEOS_ADMIN_TOKEN") or "").strip()
+    supplied = (request.headers.get("X-CEOS-Admin-Token") or "").strip()
+    auth = (request.headers.get("Authorization") or "").strip()
+    if not supplied and auth.lower().startswith("bearer "):
+        supplied = auth[7:].strip()
+    if not expected:
+        return jsonify({"ok": False, "error": "GitHub online no está expuesto hasta configurar CEOS_ADMIN_TOKEN."}), 503
+    if not supplied or supplied != expected:
+        return jsonify({"ok": False, "error": "Autorización administrativa requerida."}), 401
+    return None
+
+
+# ---------- GitHub: memoria/versionado externo y evolución controlada ----------
+@app.route("/api/github/status")
+def api_github_status():
+    return jsonify({"ok": True, **get_github().status()})
+
+
+@app.route("/api/github/repo")
+def api_github_repo():
+    guard = _github_admin_guard()
+    if guard is not None:
+        return guard
+    try:
+        return jsonify({"ok": True, "repo": get_github().repo_info()})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
+
+
+@app.route("/api/github/tree")
+def api_github_tree():
+    guard = _github_admin_guard()
+    if guard is not None:
+        return guard
+    try:
+        recursive = request.args.get("recursive", "1") not in ("0", "false", "no")
+        limit = int(request.args.get("limit", "2000"))
+        return jsonify({"ok": True, **get_github().tree(ref=request.args.get("ref"), recursive=recursive, limit=limit)})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
+
+
+@app.route("/api/github/file")
+def api_github_file():
+    guard = _github_admin_guard()
+    if guard is not None:
+        return guard
+    try:
+        path = request.args.get("path") or ""
+        return jsonify({"ok": True, "file": get_github().get_file(path, ref=request.args.get("ref"))})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
+
+
+@app.route("/api/github/proposals")
+def api_github_proposals():
+    guard = _github_admin_guard()
+    if guard is not None:
+        return guard
+    try:
+        limit = int(request.args.get("limit", "30"))
+    except Exception:
+        limit = 30
+    return jsonify({"ok": True, "proposals": get_github().list_proposals(limit)})
+
+
+@app.route("/api/github/proposals", methods=["POST"])
+def api_github_propose():
+    guard = _github_admin_guard()
+    if guard is not None:
+        return guard
+    data = request.get_json(force=True) or {}
+    try:
+        proposal = get_github().propose_file(
+            data.get("path") or "",
+            data.get("content") or "",
+            data.get("message") or "",
+            reason=data.get("reason") or "",
+        )
+        get_life().record_learning("github_proposal", f"Preparé una propuesta para {proposal.get('path')}", topic=proposal.get("path"))
+        return jsonify({"ok": True, "proposal": proposal}), 201
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@app.route("/api/github/proposals/<proposal_id>/publish", methods=["POST"])
+def api_github_publish(proposal_id):
+    guard = _github_admin_guard()
+    if guard is not None:
+        return guard
+    data = request.get_json(silent=True) or {}
+    try:
+        result = get_github().publish_proposal(
+            proposal_id,
+            create_pr=bool(data.get("create_pr", True)),
+            title=data.get("title"),
+        )
+        get_life().record_influence("github", f"Publiqué la propuesta {proposal_id} en una rama de GitHub.", outcome="accepted", target=proposal_id)
+        return jsonify(result)
+    except PermissionError as exc:
+        get_life().record_influence("github", f"Propuse publicar {proposal_id}, pero quedó bloqueado por consentimiento/configuración.", outcome="rejected", target=proposal_id)
+        return jsonify({"ok": False, "error": str(exc)}), 403
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
 
 
 # ---------- Investigación / Aprendizaje de temas ----------
@@ -964,6 +1257,7 @@ def api_mentor_ingest_file():
                 identity=get_identity(),
                 user=get_user(),
                 life=get_life(),
+                agency=get_agency(),
             )
             bak = DATA_DIR / "backups"
             bak.mkdir(parents=True, exist_ok=True)
@@ -1334,10 +1628,34 @@ def api_chat():
     long_mode = bool(data.get("long") or data.get("version_larga") or data.get("larga"))
     web_raw = data.get("web", data.get("internet", True))
     web_mode = False if web_raw in (False, "false", "0", 0) else True
+    mode = str(data.get("mode") or "organic").strip().lower()
+    if mode not in {"organic", "teach", "analysis"}:
+        mode = "organic"
     result = get_chat().reply(
-        sid, text, device_id=device, long=long_mode, web=web_mode,
+        sid, text, device_id=device, long=long_mode, web=web_mode, mode=mode,
     )
     return jsonify(result)
+
+
+@app.route("/api/chat/adaptive")
+def api_chat_adaptive():
+    return jsonify({"ok": True, "adaptive": get_adaptive().profile_snapshot(), "context": get_adaptive().context_block()})
+
+
+@app.route("/api/chat/feedback", methods=["POST"])
+def api_chat_feedback():
+    data = request.get_json(force=True) or {}
+    kind = (data.get("type") or data.get("feedback") or "").strip()
+    text = (data.get("text") or "").strip()
+    result = get_adaptive().feedback(kind, text=text, context={"session_id": data.get("session_id")})
+    return jsonify(result)
+
+
+@app.route("/api/chat/teach", methods=["POST"])
+def api_chat_teach():
+    data = request.get_json(force=True) or {}
+    topic = (data.get("topic") or "").strip()
+    return jsonify({"ok": True, "teaching": get_adaptive().next_teaching_move(topic), "directive": get_adaptive().teaching_directive(topic)})
 
 
 @app.route("/api/chat/sessions")
@@ -1367,9 +1685,19 @@ def cronos_v1_root():
             "POST /cronos/v1/codex/expand": "Expandir un tema desde el Codex",
             "GET  /cronos/v1/library": "Biblioteca del Maestro",
             "GET  /api/life": "Estado vital funcional persistente",
+            "GET  /api/life/autobiography": "Historia funcional de CEOS",
+            "GET  /api/github/status": "Estado de la conexión GitHub",
+            "GET  /api/github/repo": "Metadatos del repositorio GitHub",
+            "GET  /api/github/tree": "Árbol del repositorio",
+            "GET  /api/github/file": "Lectura de un archivo remoto",
+            "POST /api/github/proposals": "Crear propuesta local para GitHub",
+            "POST /api/github/proposals/<id>/publish": "Publicar propuesta mediante rama + PR (consentimiento)" ,
             "POST /api/life/heartbeat": "Pulso del sistema",
             "POST /api/life/reflect": "Reflexión local y próximos movimientos",
             "POST /api/life/feedback": "Corrección/confirmación que modifica el aprendizaje",
+            "GET  /api/chat/adaptive": "Perfil adaptativo de conversación y enseñanza",
+            "POST /api/chat/feedback": "Feedback que reajusta CEOS v8",
+            "POST /api/chat/teach": "Siguiente movimiento pedagógico",
             "POST /cronos/v1/chat": "Diálogo conversacional (mensaje + session_id)",
         },
     })
@@ -1392,6 +1720,7 @@ def cronos_v1_status():
         "llm": llm_available(),
         "user": get_user().get().get("display_name") or get_user().get().get("name"),
         "life": get_life().stats(),
+        "agency": {"cycle": get_agency().snapshot().get("cycle"), "goals": len(get_agency().goals("active")), "initiatives": len(get_agency().initiatives("proposed")), "experiments": len(get_agency().experiments("open"))},
     })
 
 
@@ -1529,8 +1858,8 @@ def api_meta():
     voice = get_voice().available()
     port = int(os.environ.get("PORT", "5000"))
     return jsonify({
-        "name": "CEOS v6",
-        "version": "6.0.0-living",
+        "name": "CEOS v8",
+        "version": "8.0.0-adaptive",
         "lan_ip": get_lan_ip(),
         "port": port,
         "arquetipos": list(ARCHETYPES.keys()),
@@ -1542,12 +1871,21 @@ def api_meta():
             "research": True,
             "youtube_text_only": True,
             "voice_female_preferred": True,
+            "adaptive_dialogue": True,
+            "adaptive_teaching": True,
+            "persistent_mastery": True,
             "multi_device": True,
             "mentor": True,
             "document_ingest": True,
             "study_guides": True,
             "codex": True,
             "deep_write_optional": True,
+            "agency": True,
+            "agency_goals": True,
+            "agency_initiatives": True,
+            "agency_experiments": True,
+            "agency_model_gaps": True,
+            "agency_evolution_proposals": True,
             "cloud_ready": True,
             "fractal_codex": True,
             "web_research_in_chat": True,
@@ -1556,6 +1894,9 @@ def api_meta():
             "coaching_course": True,
             "living_core": True,
             "bounded_autonomy": True,
+            "autobiography": True,
+            "github_bridge": bool(get_github().status().get("enabled")),
+            "github_write": bool(get_github().status().get("write_enabled")),
         },
     })
 
@@ -1583,7 +1924,8 @@ def start_life_background_worker():
             life = get_life()
             while True:
                 try:
-                    life.heartbeat(reason="background")
+                    state = life.heartbeat(reason="background")
+                    get_agency().tick(state, reason="background")
                 except Exception:
                     pass
                 time.sleep(max(10, int(os.environ.get("CEOS_LIFE_INTERVAL", "20"))))
@@ -1603,7 +1945,7 @@ def main():
     port = int(os.environ.get("PORT", "5000"))
     ip = get_lan_ip()
     print("=" * 60)
-    print("  CEOS v6 — Motor CRONOS-Espiral + Living Core (cloud-ready)")
+    print("  CEOS v8 — CRONOS-Espiral + Living Entity + Adaptive Mentor (cloud-ready)")
     print("=" * 60)
     print(f"  Local:    http://127.0.0.1:{port}")
     print(f"  Red LAN:  http://{ip}:{port}")

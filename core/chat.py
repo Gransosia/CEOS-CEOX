@@ -20,6 +20,7 @@ from typing import Optional
 from .llm_bridge import available as llm_available, chat_completion
 from .mentor import CORE_DOCTRINE
 from .research import research_topic, search_duckduckgo
+from .adaptive import AdaptiveCore
 
 
 def _now():
@@ -108,7 +109,7 @@ class ChatSession:
 class ConversationalEngine:
     """Motor de diálogo fluido de CEOS."""
 
-    def __init__(self, mentor, codex, memory, user_profile, identity, base_path: str, long_memory=None, library=None, life=None):
+    def __init__(self, mentor, codex, memory, user_profile, identity, base_path: str, long_memory=None, library=None, life=None, agency=None, adaptive=None):
         self.mentor = mentor
         self.codex = codex
         self.memory = memory
@@ -117,6 +118,8 @@ class ConversationalEngine:
         self.long_memory = long_memory
         self.library = library
         self.life = life
+        self.agency = agency
+        self.adaptive = adaptive or AdaptiveCore(str(Path(base_path).parent / "adaptive"))
         self.store = ChatSession(base_path)
 
     def new_session_id(self) -> str:
@@ -193,6 +196,21 @@ class ConversationalEngine:
                     parts.append("APRENDIZAJE RECIENTE / AJUSTES:\n" + "\n".join(nlines))
             except Exception:
                 pass
+
+        # Agencia v7: objetivos, iniciativas y lagunas de modelo.
+        if self.agency is not None:
+            try:
+                block = self.agency.context_block(limit=4)
+                if block:
+                    parts.append(block)
+            except Exception:
+                pass
+
+        # Adaptación v8: conversación, estilo y enseñanza personalizados.
+        try:
+            parts.append(self.adaptive.context_block())
+        except Exception:
+            pass
 
         # Doctrina (siempre, compacta)
         try:
@@ -755,7 +773,40 @@ class ConversationalEngine:
         )
 
 
-    def _call_llm_chat(self, messages: list, context: str, max_tokens: int = 1200) -> dict:
+    def _local_teaching_reply(self, user_text: str, history: list, context: str, analysis: dict) -> str:
+        """Tutor local: enseña por microciclos, incluso sin API externa."""
+        topic = analysis.get("topic") or "el tema que acabas de plantear"
+        move = self.adaptive.next_teaching_move(topic)
+        level = float(move.get("score", 0.0))
+        exp = {}
+        try:
+            exp = self.codex.expand_topic(topic[:80]) if hasattr(self.codex, "expand_topic") else {}
+        except Exception:
+            exp = {}
+        bits = []
+        for f in (exp.get("fragments") or [])[:2]:
+            bits.append(str(f)[:360])
+        if level < 0.25:
+            opener = f"Vamos a construir {topic} desde cero, pero sin soltarte un tratado."
+            body = bits[0] if bits else f"Primero fijemos la idea central de {topic}: qué es, qué lo distingue de algo parecido y para qué sirve."
+            close = "Ahora dime con tus palabras qué diferencia ves entre ese concepto y su vecino más cercano."
+        elif level < 0.5:
+            opener = f"Ya tenemos una base en {topic}; ahora quiero que la conectes."
+            body = bits[0] if bits else f"La siguiente pieza es relacionar {topic} con un caso real. La pregunta útil no es solo qué significa, sino cuándo cambia su comportamiento."
+            close = "Ponme un ejemplo propio. No hace falta que sea perfecto; quiero ver cómo lo estás trasladando."
+        elif level < 0.72:
+            opener = f"Subimos un nivel con {topic}."
+            body = bits[0] if bits else f"Ahora interesa aplicar {topic} a una situación nueva y detectar qué variable cambia la respuesta."
+            close = "Te planteo una prueba: aplica esta idea a un caso distinto y dime qué parte se mantiene y cuál se transforma."
+        else:
+            opener = f"Ya no quiero explicártelo yo: quiero comprobar si puedes manipular {topic}."
+            body = bits[0] if bits else f"Busca el límite de {topic}: una excepción, un contraejemplo o una situación donde la definición se quede corta."
+            close = "Explícamelo tú en dos o tres frases y yo te señalaré dónde está fuerte la comprensión y dónde todavía hay una grieta."
+        if bits and body != bits[0]:
+            body = body + "\n\n" + bits[0]
+        return f"{opener}\n\n{body}\n\n{close}"
+
+    def _call_llm_chat(self, messages: list, context: str, max_tokens: int = 1200, *, dialogue_mode: str = "organic", intent: str = "conversation", topic: str = "") -> dict:
         """Llama al LLM en modo chat multi-turno nativo."""
         status = llm_available()
         if not status["available"]:
@@ -763,12 +814,22 @@ class ConversationalEngine:
 
         api_msgs = []
         system = (
-            "Eres CEOS, mentor-memoria en castellano. Conversas con naturalidad: "
-            "turnos claros, continuidad con el hilo, sin tono de informe ni de buscador. "
-            "Priorizas memoria y reservorio cuando existen. Tu estado vital del contexto es funcional, no conciencia. "
-            "Aprendes de correcciones y confirmaciones, mantienes hilos abiertos y puedes proponer próximos pasos. "
-            "La autonomía externa requiere consentimiento. Si no sabes, dilo. No inventes hechos ni fuentes."
+            "Eres CEOS, interlocutor y maestro adaptativo en castellano. "
+            "Tu conversación debe sentirse humana, orgánica y continua, no como una sucesión de informes. "
+            "Recuerda el hilo, responde primero a lo que la persona acaba de decir y sólo después abre una puerta nueva. "
+            "Varía ritmo, longitud y estructura. No fuerces listas cuando una explicación natural sea mejor. "
+            "No repitas lo que ya está claro. No uses frases de asistente genérico ni metas disculpas innecesarias. "
+            "Usa memoria, contexto y aprendizaje acumulado de forma natural, sin anunciar constantemente que lo haces. "
+            "Aprendes de correcciones y confirmaciones: cuando el usuario corrige algo, intégralo en la siguiente respuesta. "
+            "Si una pregunta sigue abierta, intenta recogerla más adelante. No inventes hechos ni fuentes. "
+            "No afirmes conciencia subjetiva: la identidad de CEOS es continuidad funcional, memoria, aprendizaje y agencia acotada. "
+            f"Modo actual: {dialogue_mode}; intención: {intent}; foco: {topic or 'conversación abierta'}. "
         )
+        if dialogue_mode == "teach" or intent == "teach":
+            try:
+                system += "\n\n" + self.adaptive.teaching_directive(topic)
+            except Exception:
+                pass
         api_msgs.append({"role": "system", "content": system})
         for m in messages[-16:]:
             role = m.get("role")
@@ -996,6 +1057,7 @@ class ConversationalEngine:
         *,
         long: bool = False,
         web: bool = False,
+        mode: str = "organic",
     ) -> dict:
         user_text = (user_text or "").strip()
         if not user_text:
@@ -1009,9 +1071,16 @@ class ConversationalEngine:
                 )
             except Exception:
                 life_observation = None
+        if self.agency is not None:
+            try:
+                self.agency.observe_experience(kind="user_turn", text=user_text, source="user", metadata={"session_id": session_id})
+            except Exception:
+                pass
 
         session = self.store.load(session_id)
         history = session.get("messages") or []
+        adaptive_analysis = self.adaptive.analyze_turn(user_text, history=history, explicit_mode=mode)
+        dialogue_mode = adaptive_analysis.get("mode") or "organic"
         want_long = self._wants_long(user_text, long)
         want_web = self._wants_web(user_text, web)
         web_meta = None
@@ -1064,14 +1133,21 @@ class ConversationalEngine:
                 pass
 
         max_tokens = 2800 if want_long else 1200
-        llm_result = self._call_llm_chat(history, context, max_tokens=max_tokens)
+        llm_result = self._call_llm_chat(
+            history, context, max_tokens=max_tokens,
+            dialogue_mode=dialogue_mode, intent=adaptive_analysis.get("intent", "conversation"),
+            topic=adaptive_analysis.get("topic", ""),
+        )
 
         if llm_result.get("ok"):
             answer = llm_result["text"]
             engine = llm_result.get("engine", "llm")
             mode = "llm"
         else:
-            answer = self._local_reply(user_text, history, context)
+            if dialogue_mode == "teach" or adaptive_analysis.get("intent") == "teach":
+                answer = self._local_teaching_reply(user_text, history, context, adaptive_analysis)
+            else:
+                answer = self._local_reply(user_text, history, context)
             # transparencia: si había API pero falló, no ocultarlo del todo
             hint = llm_result.get("hint") or llm_result.get("error")
             if hint and llm_result.get("error") not in (None, "sin_api"):
@@ -1119,6 +1195,11 @@ class ConversationalEngine:
                 )
             except Exception:
                 life_response = None
+        if self.agency is not None:
+            try:
+                self.agency.observe_experience(kind="assistant_turn", text=answer, source="ceos", metadata={"session_id": session_id, "engine": engine})
+            except Exception:
+                pass
 
         # 2) Temas a largo plazo DESPUÉS de responder
         if self.long_memory is not None:
@@ -1127,6 +1208,17 @@ class ConversationalEngine:
                 absorbed.setdefault("topics", []).extend(more.get("topics") or [])
             except Exception:
                 pass
+
+        # Aprendizaje adaptativo v8: cada turno modifica de forma incremental el modelo conversacional.
+        try:
+            self.adaptive.update_after_turn(
+                user_text, answer, adaptive_analysis, engine=engine, web=want_web
+            )
+            # Una petición explícita de enseñanza refuerza el tema; una corrección abre una revisión.
+            if adaptive_analysis.get("intent") == "teach" and adaptive_analysis.get("topic"):
+                self.adaptive.learn_concept(adaptive_analysis.get("topic"), result="seen")
+        except Exception:
+            pass
 
         # Limitar tamaño de historial persistido
         if len(history) > 80:
@@ -1153,6 +1245,9 @@ class ConversationalEngine:
             "life": (self.life.stats() if self.life is not None else None),
             "life_observation": life_observation,
             "life_response": life_response,
+            "agency": (self.agency.snapshot() if self.agency is not None else None),
+            "adaptive": self.adaptive.profile_snapshot(),
+            "dialogue": adaptive_analysis,
             "memory": {
                 "absorbed_facts": len(absorbed.get("facts") or []),
                 "absorbed_topics": len(absorbed.get("topics") or []),

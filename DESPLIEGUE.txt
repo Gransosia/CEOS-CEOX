@@ -1,4 +1,4 @@
-CEOS — paquete para desplegar en Render (19-09-2026)
+CEOS v8.0 — paquete para desplegar en Render (24-09-2026)
 =====================================================
 
 Repositorio: https://github.com/Gransosia/CEOS-CEOX
@@ -48,3 +48,50 @@ PRUEBAS RÁPIDAS
 · "Qué hay en el reservorio" → lista docs o "vacío"
 · "Qué puedes hacer"         → guía de uso, NO doctrina CRONOS
 · Pregunta normal            → idealmente engine groq (si la clave es válida)
+
+
+GITHUB BRIDGE (opcional)
+-------------------------
+En Render → Environment añade como secretos:
+  CEOS_ADMIN_TOKEN = secreto largo para proteger las rutas GitHub
+  CEOS_GITHUB_TOKEN = tu token de GitHub
+  CEOS_GITHUB_REPOSITORY = propietario/repositorio
+  CEOS_GITHUB_BRANCH = main
+
+Primera fase:
+  CEOS_GITHUB_WRITE = 0
+
+Así CEOS puede comprobar el repo, leer archivos y preparar propuestas locales sin escribir en GitHub.
+
+Segunda fase (evolución controlada):
+  CEOS_GITHUB_WRITE = 1
+  CEOS_GITHUB_ALLOW_WORKFLOWS = 0
+
+En ese modo una propuesta publicada se lleva a una rama `ceos/proposal/...` y, por defecto, abre un Pull Request para revisión humana. No se modifica `main` directamente desde CEOS.
+
+
+CEOS v7 — AGENCY CORE (base de v8)
+---------------------
+Nuevos mecanismos persistentes:
+  - objetivos y compromisos
+  - iniciativas proactivas acotadas
+  - experimentos ex ante congelados
+  - lagunas de modelo
+  - propuestas de evolución del propio CEOS
+  - auditoría de agencia
+
+Endpoints principales:
+  GET  /api/agency
+  POST /api/agency/tick
+  GET/POST /api/agency/goals
+  GET /api/agency/initiatives
+  POST /api/agency/initiatives/<id>/decision
+  GET/POST /api/agency/experiments
+  POST /api/agency/experiments/<id>/resolve
+  GET/POST /api/agency/model-gaps
+  POST /api/agency/model-gaps/<id>/close
+  GET/POST /api/agency/evolution-proposals
+  GET /api/agency/audit
+
+La agencia es deliberadamente acotada: observar, recordar, proponer y aprender sí;
+acciones externas o cambios de código requieren consentimiento y/o Pull Request.
