@@ -1148,10 +1148,22 @@ class ConversationalEngine:
                 answer = self._local_teaching_reply(user_text, history, context, adaptive_analysis)
             else:
                 answer = self._local_reply(user_text, history, context)
-            # transparencia: si había API pero falló, no ocultarlo del todo
+            # Transparencia útil: diferenciar credencial, modelo/permisos y cuota.
             hint = llm_result.get("hint") or llm_result.get("error")
             if hint and llm_result.get("error") not in (None, "sin_api"):
-                answer = answer + "\n\n(Nota técnica: el LLM no respondió (" + str(hint)[:160] + "); respuesta local de respaldo.)"
+                low = str(hint).lower()
+                if "401" in low or "no autorizado" in low:
+                    note = "La API rechazó la credencial (401). Comprueba/regenera la clave del proveedor."
+                elif "403" in low:
+                    if "model" in low or "permission" in low or "prohibido" in low or "retirado" in low:
+                        note = "El proveedor rechazó el modelo o sus permisos (403). CEOS v8.1 prueba automáticamente otros modelos actuales."
+                    else:
+                        note = "El proveedor devolvió 403 por permisos o credenciales. Usa «Comprobar API» para diagnosticarlo."
+                elif "429" in low:
+                    note = "El proveedor ha alcanzado temporalmente su cuota/límite (429)."
+                else:
+                    note = "El LLM no respondió; CEOS continúa con su motor local de respaldo."
+                answer = answer + "\n\n(Nota técnica: " + note + ")"
             if want_web and web_meta and web_meta.get("ok"):
                 # Incorporar hallazgos de red de forma explícita en la respuesta
                 extra_web = ""

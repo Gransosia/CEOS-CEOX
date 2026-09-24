@@ -1,97 +1,35 @@
-CEOS v8.0 — paquete para desplegar en Render (24-09-2026)
-=====================================================
+CEOS v8.1.0 — corrección LLM / Groq (24-09-2026)
+===========================================================
 
-Repositorio: https://github.com/Gransosia/CEOS-CEOX
-Servicio:    CEOS-CEOX-3 → https://ceos-ceox-3.onrender.com/
+La v8.0 usaba por defecto IDs Groq antiguos. En v8.1 CEOS abandona esa dependencia:
+prueba modelos actuales y hace fallback automático cuando uno está retirado o bloqueado.
 
-CÓMO SUBIR (opción A — más simple)
-----------------------------------
-1. Abre el repo en GitHub.
-2. Sube / reemplaza estas rutas (arrastrar archivos o "Upload files"):
+MODELOS ACTUALES DE REFERENCIA
+-------------------------------
+openai/gpt-oss-120b
+openai/gpt-oss-20b
+qwen/qwen3.8-27b
+minimaxai/minimax-m2.7
 
-   core/hub_intents.py          ← NUEVO (obligatorio)
-   core/chat.py                 ← actualizado
-   core/llm_bridge.py           ← actualizado
-   core/persist.py              ← si no está
-   core/identity_memory.py      ← si no está
-   web/index.html               ← hub en el chat
-   web/app.js                   ← botones subir/nombre
-   web/styles.css               ← estilos hub
+Si CEOS_GROQ_MODEL contiene un ID retirado conocido, se ignora automáticamente.
 
-3. Commit en la rama main.
-4. Render redespliega solo (espera Live).
-5. Ctrl+F5 en https://ceos-ceox-3.onrender.com/
+DESPLIEGUE EN RENDER
+--------------------
+1. Sube/reemplaza TODO el proyecto en GitHub.
+2. Render hará el redeploy.
+3. No hace falta borrar CEOS_GROQ_MODEL si tenía un modelo antiguo: v8.1 lo salta.
+4. Mantén GROQ_API_KEY como secreto de Render.
 
-CÓMO SUBIR (opción B — carpeta completa)
-----------------------------------------
-Sube todo el contenido de esta carpeta PARA_GITHUB a la raíz del repo
-(respetando Dockerfile, wsgi.py, requirements.txt, core/, web/).
+Comprobación sin generar texto:
+https://ceos-ceox-3.onrender.com/api/llm/status?probe=1
 
-DESPUÉS DEL DEPLOY
-------------------
-1. Comprueba: https://ceos-ceox-3.onrender.com/api/llm/status
-   Debe decir "available": true
+O desde CEOS → Inicio → Motor de redacción → Comprobar API.
 
-2. Si el chat muestra error 403 de Groq:
-   - console.groq.com → nueva API Key
-   - Render → Environment → GROQ_API_KEY = gsk_...
-   - Save (redeploy)
+Interpretación:
+- probe.ok=true: credencial aceptada y se ven modelos.
+- 401: credencial inválida/caducada.
+- 403: permisos/modelo/proyecto.
+- 429: cuota o rate limit.
 
-3. En Chat · Centro:
-   - Escribe tu nombre o usa "Guardar nombre"
-   - 📎 Subir docs
-   - Sync → Descargar copia completa
-
-PRUEBAS RÁPIDAS
----------------
-· "Me llamo David"           → debe guardar identidad (no hablar de libros)
-· "Qué hay en el reservorio" → lista docs o "vacío"
-· "Qué puedes hacer"         → guía de uso, NO doctrina CRONOS
-· Pregunta normal            → idealmente engine groq (si la clave es válida)
-
-
-GITHUB BRIDGE (opcional)
--------------------------
-En Render → Environment añade como secretos:
-  CEOS_ADMIN_TOKEN = secreto largo para proteger las rutas GitHub
-  CEOS_GITHUB_TOKEN = tu token de GitHub
-  CEOS_GITHUB_REPOSITORY = propietario/repositorio
-  CEOS_GITHUB_BRANCH = main
-
-Primera fase:
-  CEOS_GITHUB_WRITE = 0
-
-Así CEOS puede comprobar el repo, leer archivos y preparar propuestas locales sin escribir en GitHub.
-
-Segunda fase (evolución controlada):
-  CEOS_GITHUB_WRITE = 1
-  CEOS_GITHUB_ALLOW_WORKFLOWS = 0
-
-En ese modo una propuesta publicada se lleva a una rama `ceos/proposal/...` y, por defecto, abre un Pull Request para revisión humana. No se modifica `main` directamente desde CEOS.
-
-
-CEOS v7 — AGENCY CORE (base de v8)
----------------------
-Nuevos mecanismos persistentes:
-  - objetivos y compromisos
-  - iniciativas proactivas acotadas
-  - experimentos ex ante congelados
-  - lagunas de modelo
-  - propuestas de evolución del propio CEOS
-  - auditoría de agencia
-
-Endpoints principales:
-  GET  /api/agency
-  POST /api/agency/tick
-  GET/POST /api/agency/goals
-  GET /api/agency/initiatives
-  POST /api/agency/initiatives/<id>/decision
-  GET/POST /api/agency/experiments
-  POST /api/agency/experiments/<id>/resolve
-  GET/POST /api/agency/model-gaps
-  POST /api/agency/model-gaps/<id>/close
-  GET/POST /api/agency/evolution-proposals
-  GET /api/agency/audit
-
-La agencia es deliberadamente acotada: observar, recordar, proponer y aprender sí;
-acciones externas o cambios de código requieren consentimiento y/o Pull Request.
+El chat ya no presenta cualquier 403 como “clave mala”. Además, si un modelo no
+funciona, intenta automáticamente el siguiente modelo actual disponible.

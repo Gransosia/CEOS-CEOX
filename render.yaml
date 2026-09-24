@@ -17,3 +17,6 @@ services:
     # - CEOS_GITHUB_BRANCH=main
     # - CEOS_GITHUB_WRITE=0
     # - CEOS_GITHUB_ALLOW_WORKFLOWS=0
+
+    # - key: CEOS_GROQ_MODEL
+    #   value: openai/gpt-oss-120b

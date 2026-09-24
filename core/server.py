@@ -24,7 +24,7 @@ from .ingest import DocumentLibrary
 from .mentor import Mentor
 from .codex import Codex
 from .user_profile import UserProfile
-from .llm_bridge import available as llm_available, save_keys as llm_save_keys
+from .llm_bridge import available as llm_available, save_keys as llm_save_keys, probe_groq
 from .chat import ConversationalEngine
 from .long_memory import LongMemory
 from .evolve import EvolutionEngine
@@ -1419,7 +1419,10 @@ def api_llm_keys():
 
 @app.route("/api/llm/status")
 def api_llm_status():
-    return jsonify(llm_available())
+    data = llm_available()
+    if request.args.get("probe") == "1" and "groq" in (data.get("providers") or []):
+        data["probe"] = probe_groq()
+    return jsonify(data)
 
 
 

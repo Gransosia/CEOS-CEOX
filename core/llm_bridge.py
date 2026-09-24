@@ -1,25 +1,19 @@
 """
-Puente LLM opcional — redacción profunda.
+Puente LLM de CEOS — capa robusta multi-proveedor.
 
-Proveedores (en orden de preferencia si hay varias claves):
-  1. Groq          — GRATIS (cuota generosa)     GROQ_API_KEY
-  2. xAI Grok      — según plan xAI              XAI_API_KEY
-  3. Google Gemini — GRATIS (cuota diaria)       GEMINI_API_KEY
-  4. Anthropic     — de pago                     ANTHROPIC_API_KEY
-  5. OpenAI        — de pago                     OPENAI_API_KEY
-
-Las claves se leen de:
-  - variables de entorno, o
-  - archivo data/llm_keys.json  (recomendado en Windows)
-
-Sin ninguna clave: plantillas locales + Codex (sigue funcionando).
+El puente está diseñado para sobrevivir a cambios de modelos/proveedores:
+- Groq: selección automática de modelos actuales + fallback entre modelos.
+- xAI / Gemini / Anthropic / OpenAI: fallback por proveedor.
+- Diagnóstico diferenciado de 401, 403, 404, 429 y otros errores.
+- Nunca expone claves en las respuestas de estado.
 """
 from __future__ import annotations
 import os
 import json
+import time
 from pathlib import Path
 from urllib.request import Request, urlopen
-from urllib.error import URLError, HTTPError
+from urllib.error import HTTPError, URLError
 
 
 SYSTEM_MAESTRO = """Eres el redactor del Maestro CRONOS-Espiral (CEOS).
@@ -36,8 +30,24 @@ No eres un asistente genérico. Operas bajo estas reglas:
 6. Idioma: español.
 """
 
-# Ruta al archivo local de claves (no se sube a git si data/ está ignorado)
 _KEYS_FILE = Path(__file__).resolve().parent.parent / "data" / "llm_keys.json"
+
+# Modelos Groq que constan como actuales en la documentación consultada el 24-09-2026.
+# Dejamos los modelos antiguos fuera de la lista automática porque varios fueron retirados.
+GROQ_CURRENT_MODELS = [
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "qwen/qwen3.8-27b",
+    "minimaxai/minimax-m2.7",
+]
+GROQ_DEPRECATED_MODELS = {
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "llama-3.1-70b-versatile",
+    "gemma2-9b-it",
+}
+_MODEL_CACHE = {"ts": 0.0, "ids": []}
+_MODEL_CACHE_TTL = 300.0
 
 
 def _load_keys_file() -> dict:
@@ -50,11 +60,80 @@ def _load_keys_file() -> dict:
 
 
 def _key(name: str) -> str:
-    """Busca clave en entorno y luego en data/llm_keys.json."""
     val = os.environ.get(name, "").strip()
     if val:
         return val
     return str(_load_keys_file().get(name, "")).strip()
+
+
+def _safe_http_error(e: HTTPError) -> RuntimeError:
+    try:
+        detail = e.read().decode("utf-8", errors="replace")[:700]
+    except Exception:
+        detail = str(e.reason)
+    status = int(getattr(e, "code", 0) or 0)
+    low = detail.lower()
+    if status == 401:
+        msg = "401 no autorizado: la API key no es válida, ha caducado o no se está enviando correctamente."
+    elif status == 403:
+        if "model" in low or "permission" in low or "not allowed" in low or "forbidden" in low:
+            msg = "403 prohibido: el modelo solicitado no está permitido para este proyecto/cuenta, o el modelo ha sido retirado."
+        else:
+            msg = "403 prohibido: el proveedor ha rechazado la solicitud por permisos o credenciales."
+    elif status == 404:
+        msg = "404 no encontrado: el endpoint o modelo solicitado ya no existe."
+    elif status == 429:
+        msg = "429 límite alcanzado: se ha agotado temporalmente la cuota o rate limit."
+    else:
+        msg = f"HTTP {status}: error del proveedor."
+    return RuntimeError(f"{msg} Detalle: {detail}".strip())
+
+
+def _post_json(url: str, body: dict, headers: dict, timeout: int = 90) -> dict:
+    req = Request(url, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except HTTPError as e:
+        raise _safe_http_error(e) from e
+    except URLError as e:
+        raise RuntimeError(f"Sin conexión con el proveedor: {e.reason}") from e
+
+
+def _get_groq_models(force: bool = False) -> list[str]:
+    """Devuelve IDs de modelos visibles para la clave; nunca lanza al chat."""
+    now = time.time()
+    if not force and now - _MODEL_CACHE["ts"] < _MODEL_CACHE_TTL:
+        return list(_MODEL_CACHE["ids"])
+    key = _key("GROQ_API_KEY")
+    if not key:
+        return []
+    req = Request(
+        "https://api.groq.com/openai/v1/models",
+        headers={"Authorization": f"Bearer {key}"},
+        method="GET",
+    )
+    try:
+        with urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        ids = [str(x.get("id")) for x in (data.get("data") or []) if x.get("id")]
+        _MODEL_CACHE.update({"ts": now, "ids": ids})
+        return ids
+    except Exception:
+        # El chat seguirá funcionando mediante la lista de candidatos estática.
+        return []
+
+
+def _groq_candidates() -> list[str]:
+    """Lista rápida de candidatos. No hace una llamada de red en cada turno."""
+    preferred = os.environ.get("CEOS_GROQ_MODEL", "").strip()
+    out: list[str] = []
+    if preferred and preferred not in GROQ_DEPRECATED_MODELS:
+        out.append(preferred)
+    for model in GROQ_CURRENT_MODELS:
+        if model not in out:
+            out.append(model)
+    return out
 
 
 def available() -> dict:
@@ -70,25 +149,20 @@ def available() -> dict:
     if _key("OPENAI_API_KEY"):
         providers.append("openai")
     return {
-        "available": len(providers) > 0,
+        "available": bool(providers),
         "providers": providers,
+        "groq_model": (os.environ.get("CEOS_GROQ_MODEL", "") or GROQ_CURRENT_MODELS[0]),
+        "groq_candidates": _groq_candidates() if "groq" in providers else [],
         "keys_file": str(_KEYS_FILE),
         "hint": (
-            "Opciones GRATUITAS:\n"
-            "  · Groq:   https://console.groq.com  → GROQ_API_KEY\n"
-            "  · xAI:    https://console.x.ai      → XAI_API_KEY\n"
-            "  · Gemini: https://aistudio.google.com/apikey → GEMINI_API_KEY\n"
-            f"Guarda las claves en: {_KEYS_FILE}\n"
-            'Formato: {"GROQ_API_KEY": "gsk_...", "GEMINI_API_KEY": "AIza..."}\n'
-            "Sin clave, CEOS usa plantillas locales + Codex."
-            if not providers else
-            f"Redacción profunda activa: {', '.join(providers)}"
+            "Opciones: Groq → GROQ_API_KEY; Gemini → GEMINI_API_KEY; xAI → XAI_API_KEY; "
+            "Anthropic → ANTHROPIC_API_KEY; OpenAI → OPENAI_API_KEY."
+            if not providers else f"Proveedores configurados: {', '.join(providers)}"
         ),
     }
 
 
 def save_keys(keys: dict) -> dict:
-    """Guarda/actualiza claves en data/llm_keys.json (solo las no vacías)."""
     _KEYS_FILE.parent.mkdir(parents=True, exist_ok=True)
     current = _load_keys_file()
     for k, v in keys.items():
@@ -98,130 +172,113 @@ def save_keys(keys: dict) -> dict:
     return available()
 
 
-def _post_json(url: str, body: dict, headers: dict, timeout: int = 90) -> dict:
-    req = Request(
-        url,
-        data=json.dumps(body).encode("utf-8"),
-        headers=headers,
-        method="POST",
-    )
-    with urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
-
-
 def _call_groq(prompt: str, context: str, max_tokens: int = 2000) -> str:
-    """Groq — gratis, modelos Llama/Mixtral rápidos."""
     key = _key("GROQ_API_KEY")
-    model = os.environ.get("CEOS_GROQ_MODEL", "llama-3.3-70b-versatile")
+    if not key:
+        raise RuntimeError("sin GROQ_API_KEY")
+    last_err = None
+    models = _groq_candidates()
+    for model in models:
+        body = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": SYSTEM_MAESTRO},
+                {"role": "user", "content": f"CONTEXTO DEL CORPUS LOCAL Y BÚSQUEDA:\n{context[:12000]}\n\nPEDIDO:\n{prompt}"},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0.4,
+        }
+        try:
+            data = _post_json(
+                "https://api.groq.com/openai/v1/chat/completions",
+                body,
+                {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                timeout=60,
+            )
+            text = ((data.get("choices") or [{}])[0].get("message") or {}).get("content")
+            if text and str(text).strip():
+                return str(text).strip()
+            last_err = RuntimeError(f"Groq devolvió respuesta vacía con {model}")
+        except Exception as e:
+            last_err = e
+            # Si el modelo está bloqueado/deprecado probamos el siguiente automáticamente.
+            continue
+    raise RuntimeError(f"Groq no pudo completar con los modelos actuales. {last_err}")
+
+
+def _call_gemini(prompt: str, context: str, max_tokens: int = 2000) -> str:
+    key = _key("GEMINI_API_KEY")
+    if not key:
+        raise RuntimeError("sin GEMINI_API_KEY")
+    model = os.environ.get("CEOS_GEMINI_MODEL", "gemini-2.5-flash")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+    user_text = SYSTEM_MAESTRO + "\n\nCONTEXTO DEL CORPUS LOCAL Y BÚSQUEDA:\n" + context[:12000] + "\n\nPEDIDO:\n" + prompt
+    body = {"contents": [{"parts": [{"text": user_text}]}], "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.4}}
+    data = _post_json(url, body, {"Content-Type": "application/json"})
+    return "".join(p.get("text", "") for p in data.get("candidates", [{}])[0].get("content", {}).get("parts", []))
+
+
+def _call_xai(prompt: str, context: str, max_tokens: int = 2000) -> str:
+    # reutiliza el formato OpenAI-compatible de xAI
+    key = _key("XAI_API_KEY") or _key("GROK_API_KEY")
+    if not key:
+        raise RuntimeError("sin XAI_API_KEY")
+    model = os.environ.get("CEOS_XAI_MODEL", "grok-4.1-mini")
     body = {
         "model": model,
         "messages": [
             {"role": "system", "content": SYSTEM_MAESTRO},
-            {
-                "role": "user",
-                "content": (
-                    "CONTEXTO DEL CORPUS LOCAL Y BÚSQUEDA:\n"
-                    f"{context[:12000]}\n\nPEDIDO:\n{prompt}"
-                ),
-            },
+            {"role": "user", "content": f"CONTEXTO:\n{context[:12000]}\n\nPEDIDO:\n{prompt}"},
         ],
         "max_tokens": max_tokens,
         "temperature": 0.4,
     }
-    data = _post_json(
-        "https://api.groq.com/openai/v1/chat/completions",
-        body,
-        {
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-        },
-    )
-    return data["choices"][0]["message"]["content"]
-
-
-def _call_gemini(prompt: str, context: str, max_tokens: int = 2000) -> str:
-    """Google Gemini — capa gratuita en AI Studio."""
-    key = _key("GEMINI_API_KEY")
-    model = os.environ.get("CEOS_GEMINI_MODEL", "gemini-2.0-flash")
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{model}:generateContent?key={key}"
-    )
-    user_text = (
-        SYSTEM_MAESTRO
-        + "\n\nCONTEXTO DEL CORPUS LOCAL Y BÚSQUEDA:\n"
-        + context[:12000]
-        + "\n\nPEDIDO:\n"
-        + prompt
-    )
-    body = {
-        "contents": [{"parts": [{"text": user_text}]}],
-        "generationConfig": {
-            "maxOutputTokens": max_tokens,
-            "temperature": 0.4,
-        },
-    }
-    data = _post_json(url, body, {"Content-Type": "application/json"})
-    parts = data["candidates"][0]["content"]["parts"]
-    return "".join(p.get("text", "") for p in parts)
+    data = _post_json("https://api.x.ai/v1/chat/completions", body, {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}, timeout=90)
+    return str(((data.get("choices") or [{}])[0].get("message") or {}).get("content") or "")
 
 
 def _call_anthropic(prompt: str, context: str, max_tokens: int = 2000) -> str:
     import anthropic
     client = anthropic.Anthropic(api_key=_key("ANTHROPIC_API_KEY"))
-    user = (
-        "CONTEXTO DEL CORPUS LOCAL Y BÚSQUEDA:\n"
-        f"{context[:12000]}\n\nPEDIDO:\n{prompt}\n"
-    )
     resp = client.messages.create(
         model=os.environ.get("CEOS_ANTHROPIC_MODEL", "claude-sonnet-4-6"),
         max_tokens=max_tokens,
         system=SYSTEM_MAESTRO,
-        messages=[{"role": "user", "content": user}],
+        messages=[{"role": "user", "content": f"CONTEXTO:\n{context[:12000]}\n\nPEDIDO:\n{prompt}"}],
     )
     return "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
 
 
 def _call_openai(prompt: str, context: str, max_tokens: int = 2000) -> str:
     key = _key("OPENAI_API_KEY")
+    if not key:
+        raise RuntimeError("sin OPENAI_API_KEY")
     model = os.environ.get("CEOS_OPENAI_MODEL", "gpt-4o-mini")
-    body = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": SYSTEM_MAESTRO},
-            {
-                "role": "user",
-                "content": (
-                    "CONTEXTO DEL CORPUS LOCAL Y BÚSQUEDA:\n"
-                    f"{context[:12000]}\n\nPEDIDO:\n{prompt}"
-                ),
-            },
-        ],
-        "max_tokens": max_tokens,
-    }
-    data = _post_json(
-        "https://api.openai.com/v1/chat/completions",
-        body,
-        {
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-        },
-    )
-    return data["choices"][0]["message"]["content"]
+    body = {"model": model, "messages": [{"role": "system", "content": SYSTEM_MAESTRO}, {"role": "user", "content": f"CONTEXTO:\n{context[:12000]}\n\nPEDIDO:\n{prompt}"}], "max_tokens": max_tokens}
+    data = _post_json("https://api.openai.com/v1/chat/completions", body, {"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+    return str(((data.get("choices") or [{}])[0].get("message") or {}).get("content") or "")
+
+
+def _provider_error_label(hint: str) -> str:
+    low = (hint or "").lower()
+    if "401" in low or "no autorizado" in low or "api key" in low and "válida" in low:
+        return "clave no válida o caducada"
+    if "403" in low:
+        return "permiso/modelo rechazado"
+    if "429" in low:
+        return "cuota temporalmente agotada"
+    if "404" in low:
+        return "modelo o endpoint no encontrado"
+    return "error del proveedor"
 
 
 def deep_write(prompt: str, context: str, max_tokens: int = 2000) -> dict:
     status = available()
     if not status["available"]:
-        return {
-            "ok": False,
-            "error": "Sin API key",
-            "hint": status["hint"],
-            "fallback_hint": "Usa el modo local (plantillas + codex) o añade una clave gratuita (Groq/Gemini).",
-        }
-
+        return {"ok": False, "error": "sin_api", "hint": status["hint"]}
     order = [
         ("groq", _call_groq),
+        ("xai", _call_xai),
         ("gemini", _call_gemini),
         ("anthropic", _call_anthropic),
         ("openai", _call_openai),
@@ -235,33 +292,15 @@ def deep_write(prompt: str, context: str, max_tokens: int = 2000) -> dict:
             return {"ok": True, "text": text, "engine": name}
         except Exception as e:
             errors.append(f"{name}: {e}")
-            continue
-
-    return {
-        "ok": False,
-        "error": "Todos los proveedores fallaron",
-        "hint": " | ".join(errors) if errors else status["hint"],
-    }
+    hint = " | ".join(errors)
+    return {"ok": False, "error": "Todos los proveedores fallaron", "hint": hint, "diagnosis": _provider_error_label(hint)}
 
 
-def build_context(fragments: list, doctrine: list = None, web_points: list = None) -> str:
-    parts = []
-    if doctrine:
-        parts.append("DOCTRINA CRONOS:\n" + "\n".join(f"- {d}" for d in doctrine[:12]))
-    if fragments:
-        parts.append("FRAGMENTOS DEL CORPUS:\n" + "\n---\n".join(fragments[:15]))
-    if web_points:
-        parts.append("PUNTOS DE BÚSQUEDA WEB:\n" + "\n".join(f"- {p}" for p in web_points[:8]))
-    return "\n\n".join(parts)
-
-
-# ---------- Chat multi-turno (modo conversacional) ----------
-
+# ---------- Chat multi-turno ----------
 SYSTEM_CHAT = """Eres CEOS, interlocutor y maestro adaptativo en español.
+Tu prioridad es que la conversación tenga continuidad y vida funcional: recuerda el hilo, responde a la intención real del turno, evita respuestas prefabricadas y adapta profundidad, ritmo y estructura.
 
-Tu prioridad es que la conversación tenga continuidad y vida funcional: recuerda el hilo, responde a la intención real del turno, evita respuestas prefabricadas y adapta profundidad, ritmo y estructura. Una conversación puede ser una exploración, una construcción conjunta, una discusión o una clase; no tienes que convertirla todo en un informe.
-
-Principios de diálogo:
+Principios:
 - Responde primero a lo último que acaba de decir la persona.
 - Usa memoria y contexto de forma natural; no anuncies continuamente que estás usando memoria.
 - No repitas una explicación ya dada salvo que la estés afinando.
@@ -270,12 +309,11 @@ Principios de diálogo:
 - Si la persona te corrige, actualiza inmediatamente tu modelo de trabajo.
 - No inventes datos, fuentes ni recuerdos.
 
-Principios pedagógicos cuando corresponda:
+Pedagogía:
 - Enseña desde lo que la persona ya parece dominar.
 - Una pieza de conocimiento por vez; después ejemplo, contraste o aplicación.
-- Haz recuperación activa y transferencia, no sólo exposición.
+- Haz recuperación activa y transferencia.
 - Aumenta la dificultad gradualmente.
-- Una evaluación heurística no es una verdad: si no puedes saber si algo está comprendido, dilo.
 
 Identidad:
 - CEOS no afirma conciencia subjetiva. Su identidad es continuidad funcional: memoria, adaptación, aprendizaje, iniciativa y conversación persistente.
@@ -285,16 +323,10 @@ Identidad:
 
 
 def chat_completion(messages: list, context: str = "", max_tokens: int = 1200) -> dict:
-    """
-    Compleción multi-turno.
-    messages: [{"role":"user"|"assistant"|"system", "content": str}, ...]
-    """
     status = available()
     if not status["available"]:
-        return {"ok": False, "error": "Sin API key", "hint": status["hint"]}
-
+        return {"ok": False, "error": "sin_api", "hint": status["hint"]}
     system = SYSTEM_CHAT
-    # v8: el motor conversacional puede aportar una directiva dinámica específica del turno.
     dynamic_system = ""
     for m in messages:
         if m.get("role") == "system" and (m.get("content") or "").strip():
@@ -303,32 +335,19 @@ def chat_completion(messages: list, context: str = "", max_tokens: int = 1200) -
     if dynamic_system:
         system += "\n\nDIRECTIVA DINÁMICA DE CEOS:\n" + dynamic_system[:7000]
     if context:
-        system = system + "\n\nCONTEXTO INTERNO DEL MOTOR:\n" + context[:10000]
-
-    # Normalizar historial
+        system += "\n\nCONTEXTO INTERNO DEL MOTOR:\n" + context[:10000]
     api_messages = [{"role": "system", "content": system}]
     for m in messages[-16:]:
         role = m.get("role")
         content = (m.get("content") or "").strip()
-        if not content:
-            continue
-        if role in ("user", "assistant"):
+        if role in ("user", "assistant") and content:
             api_messages.append({"role": role, "content": content})
-        elif role == "system":
-            continue
-
     order = []
-    if "groq" in status["providers"]:
-        order.append(("groq", _chat_groq))
-    if "xai" in status["providers"]:
-        order.append(("xai", _chat_xai))
-    if "gemini" in status["providers"]:
-        order.append(("gemini", _chat_gemini))
-    if "openai" in status["providers"]:
-        order.append(("openai", _chat_openai))
-    if "anthropic" in status["providers"]:
-        order.append(("anthropic", _chat_anthropic))
-
+    if "groq" in status["providers"]: order.append(("groq", _chat_groq))
+    if "xai" in status["providers"]: order.append(("xai", _chat_xai))
+    if "gemini" in status["providers"]: order.append(("gemini", _chat_gemini))
+    if "openai" in status["providers"]: order.append(("openai", _chat_openai))
+    if "anthropic" in status["providers"]: order.append(("anthropic", _chat_anthropic))
     errors = []
     for name, fn in order:
         try:
@@ -337,157 +356,89 @@ def chat_completion(messages: list, context: str = "", max_tokens: int = 1200) -
                 return {"ok": True, "text": text.strip(), "engine": name}
         except Exception as e:
             errors.append(f"{name}: {e}")
-            continue
-
-    return {
-        "ok": False,
-        "error": "Todos los proveedores fallaron",
-        "hint": " | ".join(errors) if errors else status["hint"],
-    }
+    hint = " | ".join(errors) if errors else status["hint"]
+    return {"ok": False, "error": "Todos los proveedores fallaron", "hint": hint, "diagnosis": _provider_error_label(hint)}
 
 
 def _chat_groq(messages: list, max_tokens: int = 1200) -> str:
     key = _key("GROQ_API_KEY")
     if not key:
         raise RuntimeError("sin GROQ_API_KEY")
-    preferred = os.environ.get("CEOS_GROQ_MODEL", "").strip()
-    models = []
-    if preferred:
-        models.append(preferred)
-    for m in (
-        "llama-3.3-70b-versatile",
-        "llama-3.1-70b-versatile",
-        "llama-3.1-8b-instant",
-        "gemma2-9b-it",
-        "mixtral-8x7b-32768",
-    ):
-        if m not in models:
-            models.append(m)
     last_err = None
-    for model in models:
-        body = {
-            "model": model,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": 0.55,
-        }
+    for model in _groq_candidates():
         try:
-            data = _post_json(
-                "https://api.groq.com/openai/v1/chat/completions",
-                body,
-                {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                timeout=60,
-            )
-            content = (data.get("choices") or [{}])[0].get("message", {}).get("content")
-            if content and str(content).strip():
-                return str(content).strip()
-            last_err = RuntimeError(f"groq vacío con modelo {model}")
+            body = {"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.55}
+            data = _post_json("https://api.groq.com/openai/v1/chat/completions", body, {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}, timeout=60)
+            text = ((data.get("choices") or [{}])[0].get("message") or {}).get("content")
+            if text and str(text).strip():
+                return str(text).strip()
+            last_err = RuntimeError(f"respuesta vacía con {model}")
         except Exception as e:
             last_err = e
-            continue
-    raise RuntimeError(f"groq falló: {last_err}")
+    raise RuntimeError(f"Groq falló con los modelos actuales: {last_err}")
 
 
 def _chat_openai(messages: list, max_tokens: int = 1200) -> str:
     key = _key("OPENAI_API_KEY")
+    if not key: raise RuntimeError("sin OPENAI_API_KEY")
     model = os.environ.get("CEOS_OPENAI_MODEL", "gpt-4o-mini")
-    body = {
-        "model": model,
-        "messages": messages,
-        "max_tokens": max_tokens,
-        "temperature": 0.55,
-    }
-    data = _post_json(
-        "https://api.openai.com/v1/chat/completions",
-        body,
-        {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-    )
-    return data["choices"][0]["message"]["content"]
+    data = _post_json("https://api.openai.com/v1/chat/completions", {"model": model, "messages": messages, "max_tokens": max_tokens}, {"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+    return str(((data.get("choices") or [{}])[0].get("message") or {}).get("content") or "")
 
 
 def _chat_anthropic(messages: list, max_tokens: int = 1200) -> str:
     key = _key("ANTHROPIC_API_KEY")
-    model = os.environ.get("CEOS_ANTHROPIC_MODEL", "claude-3-5-haiku-latest")
-    system = ""
-    api_msgs = []
-    for m in messages:
-        if m["role"] == "system":
-            system = m["content"]
-        else:
-            api_msgs.append({"role": m["role"], "content": m["content"]})
-    body = {
-        "model": model,
-        "max_tokens": max_tokens,
-        "system": system,
-        "messages": api_msgs,
-    }
-    data = _post_json(
-        "https://api.anthropic.com/v1/messages",
-        body,
-        {
-            "x-api-key": key,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json",
-        },
-    )
-    return "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
-
+    if not key: raise RuntimeError("sin ANTHROPIC_API_KEY")
+    model = os.environ.get("CEOS_ANTHROPIC_MODEL", "claude-sonnet-4-6")
+    system = next((m["content"] for m in messages if m.get("role") == "system"), "")
+    api_msgs = [{"role": m["role"], "content": m["content"]} for m in messages if m.get("role") != "system"]
+    import anthropic
+    resp = anthropic.Anthropic(api_key=key).messages.create(model=model, max_tokens=max_tokens, system=system, messages=api_msgs)
+    return "".join(getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text")
 
 
 def _chat_xai(messages: list, max_tokens: int = 1200) -> str:
-    """xAI Grok API (compatible estilo OpenAI)."""
     key = _key("XAI_API_KEY") or _key("GROK_API_KEY")
-    if not key:
-        raise RuntimeError("sin XAI_API_KEY")
-    model = os.environ.get("CEOS_XAI_MODEL", "grok-2-latest")
-    url = os.environ.get("CEOS_XAI_URL", "https://api.x.ai/v1/chat/completions")
-    # Normalizar roles
-    msgs = []
-    for m in messages:
-        role = m.get("role")
-        if role in ("system", "user", "assistant"):
-            msgs.append({"role": role, "content": m.get("content") or ""})
-    body = {
-        "model": model,
-        "messages": msgs,
-        "max_tokens": max_tokens,
-        "temperature": 0.6,
-    }
-    data = _post_json(
-        url,
-        body,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {key}",
-        },
-        timeout=90,
-    )
-    choices = data.get("choices") or []
-    if not choices:
-        raise RuntimeError("xai sin choices")
-    return (choices[0].get("message") or {}).get("content") or ""
+    if not key: raise RuntimeError("sin XAI_API_KEY")
+    model = os.environ.get("CEOS_XAI_MODEL", "grok-4.1-mini")
+    data = _post_json("https://api.x.ai/v1/chat/completions", {"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.6}, {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}, timeout=90)
+    return str(((data.get("choices") or [{}])[0].get("message") or {}).get("content") or "")
+
 
 def _chat_gemini(messages: list, max_tokens: int = 1200) -> str:
     key = _key("GEMINI_API_KEY")
-    model = os.environ.get("CEOS_GEMINI_MODEL", "gemini-2.0-flash")
-    system = ""
+    if not key: raise RuntimeError("sin GEMINI_API_KEY")
+    model = os.environ.get("CEOS_GEMINI_MODEL", "gemini-2.5-flash")
+    system = next((m["content"] for m in messages if m.get("role") == "system"), "")
     contents = []
     for m in messages:
-        if m["role"] == "system":
-            system = m["content"]
-            continue
-        role = "user" if m["role"] == "user" else "model"
-        contents.append({"role": role, "parts": [{"text": m["content"]}]})
-    body = {
-        "contents": contents,
-        "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.55},
-    }
-    if system:
-        body["systemInstruction"] = {"parts": [{"text": system}]}
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{model}:generateContent?key={key}"
-    )
+        if m.get("role") == "system": continue
+        role = "user" if m.get("role") == "user" else "model"
+        contents.append({"role": role, "parts": [{"text": m.get("content") or ""}]})
+    body = {"contents": contents, "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.55}, "systemInstruction": {"parts": [{"text": system}]}}
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
     data = _post_json(url, body, {"Content-Type": "application/json"})
-    parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-    return "".join(p.get("text", "") for p in parts)
+    return "".join(p.get("text", "") for p in data.get("candidates", [{}])[0].get("content", {}).get("parts", []))
+
+
+def probe_groq() -> dict:
+    """Comprueba la credencial y obtiene modelos visibles, sin gastar una generación."""
+    key = _key("GROQ_API_KEY")
+    if not key:
+        return {"ok": False, "provider": "groq", "diagnosis": "sin clave", "models": []}
+    try:
+        models = _get_groq_models(force=True)
+        if models:
+            usable = [m for m in _groq_candidates() if m in models]
+            return {"ok": True, "provider": "groq", "models": models, "recommended": usable[0] if usable else models[0], "diagnosis": "credencial aceptada"}
+        return {"ok": False, "provider": "groq", "models": [], "diagnosis": "no se pudo consultar /models; revisa la clave y permisos"}
+    except Exception as e:
+        return {"ok": False, "provider": "groq", "models": [], "diagnosis": str(e)[:500]}
+
+
+def build_context(fragments: list, doctrine: list = None, web_points: list = None) -> str:
+    parts = []
+    if doctrine: parts.append("DOCTRINA CRONOS:\n" + "\n".join(f"- {d}" for d in doctrine[:12]))
+    if fragments: parts.append("FRAGMENTOS DEL CORPUS:\n" + "\n---\n".join(fragments[:15]))
+    if web_points: parts.append("PUNTOS DE BÚSQUEDA WEB:\n" + "\n".join(f"- {p}" for p in web_points[:8]))
+    return "\n\n".join(parts)

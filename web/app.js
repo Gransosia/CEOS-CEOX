@@ -943,6 +943,27 @@ async function refreshTrajectories() {
   }
 }
 
+async function checkLLMApi() {
+  const box = document.getElementById("llm-status-box");
+  if (box) { box.className = "result"; box.textContent = "Comprobando credencial y modelos…"; }
+  try {
+    const d = await api("/api/llm/status?probe=1");
+    const p = d.probe;
+    if (p && p.ok) {
+      const rec = p.recommended || d.groq_model || "modelo disponible";
+      if (box) { box.className = "result ok"; box.textContent = `Groq OK · ${rec}`; }
+      refreshChatBadge("groq");
+      return d;
+    }
+    const msg = (p && p.diagnosis) || d.hint || "No se pudo comprobar la API.";
+    if (box) { box.className = "result warn"; box.textContent = "Groq: " + msg; }
+    return d;
+  } catch (e) {
+    if (box) { box.className = "result warn"; box.textContent = "No se pudo comprobar: " + (e.message || e); }
+    return null;
+  }
+}
+
 // ---------- Maestro CRONOS ----------
 let lastLessonBody = "";
 
@@ -2315,3 +2336,7 @@ function bindAgencyUI(){
 }
 if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",bindAgencyUI);}else{bindAgencyUI();}
 setTimeout(bindAgencyUI,1000);
+
+
+// CEOS v8.1 — diagnóstico LLM
+document.getElementById("btn-llm-check")?.addEventListener("click", () => { checkLLMApi().catch(() => {}); });
