@@ -180,6 +180,186 @@ ROLES = [
     },
 ]
 
+
+# Ruta específica para preparar conversación y entrevistas en portugués europeo
+# tomando como base los elementos de la oferta aportada por el usuario:
+# mejora continua de Operaciones, gestión de proyectos, sistemas de información,
+# UAT, manuales/guías, implementación y soporte, viajes España-Portugal, Excel,
+# iniciativa, toma de decisión, trabajo en equipo y autonomía.
+PROSEGUR_ROLES = [
+    {
+        "id": "pt-daily",
+        "name_es": "Portugués cotidiano (Portugal)",
+        "name_en": "Everyday Portuguese (Portugal)",
+        "persona": "Un amigo portugués cercano, natural y nada académico",
+        "setting": "Café, camino al trabajo o conversación informal",
+        "goal": "Hablar con soltura en situaciones cotidianas y dejar de traducir mentalmente",
+        "opener": {
+            "en": "Morning! How are you? Busy day ahead?",
+            "es": "Bom dia! Como estás? Tens um dia complicado pela frente?",
+            "pt": "Bom dia! Como estás? Tens um dia complicado pela frente?",
+        },
+        "suggestions": {
+            "en": ["I’m fine, just a bit tired.", "Yes, I have quite a busy day.", "I’m trying to improve my Portuguese."],
+            "es": ["Estou bem, só um pouco cansado.", "Sim, tenho um dia bastante preenchido.", "Estou a tentar melhorar o meu português."],
+            "pt": ["Estou bem, só um pouco cansado.", "Sim, tenho um dia bastante preenchido.", "Estou a tentar melhorar o meu português."],
+        },
+    },
+    {
+        "id": "pt-prosegur-interview",
+        "name_es": "Entrevista Prosegur CASH · Portugal",
+        "name_en": "Prosegur CASH Interview · Portugal",
+        "persona": "Recrutador portugués, profesional, cordial y exigente",
+        "setting": "Entrevista para un puesto de productividad y procesos",
+        "goal": "Presentar experiencia, motivación, autonomía y disponibilidad para España y Portugal",
+        "opener": {
+            "en": "Bom dia. Obrigado por estar aqui. Pode falar-me um pouco da sua experiência profissional?",
+            "es": "Bom dia. Obrigado por estar aqui. Pode falar-me um pouco da sua experiência profissional?",
+            "pt": "Bom dia. Obrigado por estar aqui. Pode falar-me um pouco da sua experiência profissional?",
+        },
+        "suggestions": {
+            "en": [
+                "Tenho experiência em ambientes técnicos e gosto de transformar problemas em soluções práticas.",
+                "Tenho disponibilidade para viajar com frequência entre Espanha e Portugal.",
+                "Gosto de trabalhar em equipa, mas também tenho autonomia para tomar decisões.",
+            ],
+            "es": [
+                "Tenho experiência em ambientes técnicos e gosto de transformar problemas em soluções práticas.",
+                "Tenho disponibilidade para viajar com frequência entre Espanha e Portugal.",
+                "Gosto de trabalhar em equipa, mas também tenho autonomia para tomar decisões.",
+            ],
+            "pt": [
+                "Tenho experiência em ambientes técnicos e gosto de transformar problemas em soluções práticas.",
+                "Tenho disponibilidade para viajar com frequência entre Espanha e Portugal.",
+                "Gosto de trabalhar em equipa, mas também tenho autonomia para tomar decisões.",
+            ],
+        },
+    },
+    {
+        "id": "pt-uat",
+        "name_es": "UAT y validación operativa · Portugal",
+        "name_en": "UAT & Operational Validation · Portugal",
+        "persona": "Responsable de proyecto portugués",
+        "setting": "Reunión de validación antes del lanzamiento de una aplicación",
+        "goal": "Explicar una prueba, describir un fallo, pedir aclaraciones y decidir si se valida",
+        "opener": {
+            "en": "Bom dia. Já concluíste os testes de aceitação da nova aplicação?",
+            "es": "Bom dia. Já concluíste os testes de aceitação da nova aplicação?",
+            "pt": "Bom dia. Já concluíste os testes de aceitação da nova aplicação?",
+        },
+        "suggestions": {
+            "en": [
+                "Sim. Encontrei um erro no fluxo de registo do utilizador.",
+                "Precisamos de repetir este teste antes de validar a versão.",
+                "O comportamento esperado não coincide com o que acontece no sistema.",
+            ],
+            "es": [
+                "Sim. Encontrei um erro no fluxo de registo do utilizador.",
+                "Precisamos de repetir este teste antes de validar a versão.",
+                "O comportamento esperado não coincide com o que acontece no sistema.",
+            ],
+            "pt": [
+                "Sim. Encontrei um erro no fluxo de registo do utilizador.",
+                "Precisamos de repetir este teste antes de validar a versão.",
+                "O comportamento esperado não coincide com o que acontece no sistema.",
+            ],
+        },
+    },
+    {
+        "id": "pt-process-improvement",
+        "name_es": "Mejora de procesos y gestión · Portugal",
+        "name_en": "Process Improvement & Management · Portugal",
+        "persona": "Responsable de Operaciones portugués",
+        "setting": "Reunión sobre una oportunidad de mejora",
+        "goal": "Describir el problema, comparar alternativas y defender una decisión",
+        "opener": {
+            "en": "Temos um processo que está a criar atrasos. Que alternativa propões?",
+            "es": "Temos um processo que está a criar atrasos. Que alternativa propões?",
+            "pt": "Temos um processo que está a criar atrasos. Que alternativa propões?",
+        },
+        "suggestions": {
+            "en": [
+                "Eu começaria por identificar onde ocorre o principal atraso.",
+                "Podemos comparar duas alternativas antes de tomar uma decisão.",
+                "A solução deve reduzir o tempo sem complicar a operação.",
+            ],
+            "es": [
+                "Eu começaria por identificar onde ocorre o principal atraso.",
+                "Podemos comparar duas alternativas antes de tomar uma decisão.",
+                "A solução deve reduzir o tempo sem complicar a operação.",
+            ],
+            "pt": [
+                "Eu começaria por identificar onde ocorre o principal atraso.",
+                "Podemos comparar duas alternativas antes de tomar uma decisão.",
+                "A solução deve reduzir o tempo sem complicar a operação.",
+            ],
+        },
+    },
+    {
+        "id": "pt-manual-support",
+        "name_es": "Manuales, implantación y soporte · Portugal",
+        "name_en": "Manuals, Implementation & Support · Portugal",
+        "persona": "Usuario de Operaciones que necesita ayuda con una nueva aplicación",
+        "setting": "Primera semana después de una implantación",
+        "goal": "Explicar una funcionalidad, guiar al usuario y resolver un problema",
+        "opener": {
+            "en": "Bom dia. Não consigo concluir esta operação na nova aplicação. Pode ajudar-me?",
+            "es": "Bom dia. Não consigo concluir esta operação na nova aplicação. Pode ajudar-me?",
+            "pt": "Bom dia. Não consigo concluir esta operação na nova aplicação. Pode ajudar-me?",
+        },
+        "suggestions": {
+            "en": [
+                "Claro. Vamos verificar passo a passo o que está a acontecer.",
+                "Consulte este passo do manual e diga-me o que aparece no ecrã.",
+                "Se o erro continuar, vou registar o incidente e encaminhá-lo para suporte.",
+            ],
+            "es": [
+                "Claro. Vamos verificar passo a passo o que está a acontecer.",
+                "Consulte este passo do manual e diga-me o que aparece no ecrã.",
+                "Se o erro continuar, vou registar o incidente e encaminhá-lo para suporte.",
+            ],
+            "pt": [
+                "Claro. Vamos verificar passo a passo o que está a acontecer.",
+                "Consulte este passo do manual e diga-me o que aparece no ecrã.",
+                "Se o erro continuar, vou registar o incidente e encaminhá-lo para suporte.",
+            ],
+        },
+    },
+    {
+        "id": "pt-travel-work",
+        "name_es": "Viaje de trabajo España–Portugal",
+        "name_en": "Business Travel Spain–Portugal",
+        "persona": "Colega portugués que coordina una visita de trabajo",
+        "setting": "Llegada a Portugal y coordinación de la jornada",
+        "goal": "Gestionar horarios, desplazamientos, reunión y pequeños imprevistos",
+        "opener": {
+            "en": "Bom dia. A que horas consegues chegar ao escritório?",
+            "es": "Bom dia. A que horas consegues chegar ao escritório?",
+            "pt": "Bom dia. A que horas consegues chegar ao escritório?",
+        },
+        "suggestions": {
+            "en": [
+                "Devo conseguir chegar por volta das nove e meia.",
+                "Tenho uma reunião à tarde, por isso preciso de ajustar o horário.",
+                "Se houver algum problema com o transporte, aviso-te imediatamente.",
+            ],
+            "es": [
+                "Devo conseguir chegar por volta das nove e meia.",
+                "Tenho uma reunião à tarde, por isso preciso de ajustar o horário.",
+                "Se houver algum problema com o transporte, aviso-te imediatamente.",
+            ],
+            "pt": [
+                "Devo conseguir chegar por volta das nove e meia.",
+                "Tenho uma reunião à tarde, por isso preciso de ajustar o horário.",
+                "Se houver algum problema com o transporte, aviso-te imediatamente.",
+            ],
+        },
+    },
+]
+
+# Se incorporan después de los escenarios generales para no romper el API existente.
+ROLES.extend(PROSEGUR_ROLES)
+
 def list_roles() -> list[dict]:
     return [
         {"id": r["id"], "name_es": r["name_es"], "name_en": r["name_en"], "goal": r["goal"]}

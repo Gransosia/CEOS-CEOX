@@ -1,4 +1,4 @@
-/* CEOS v8 — Living Entity + Adaptive Mentor + GitHub Bridge */
+/* CEOS v8.3 — Living Entity + Adaptive Mentor + GitHub Bridge */
 const DEVICE_ID_KEY = "ceos_device_id";
 
 function getDeviceId() {

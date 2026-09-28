@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b0f19" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>CEOS v8 — CRONOS-Espiral · Living Entity</title>
+  <title>CEOS v10.3 — Charla Cotidiana · Português PT · Grafo Vivo · CRONOS-Espiral-OCa</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -14,7 +14,7 @@
     <header>
       <div class="brand">
         <span class="logo">CEOS</span>
-        <span class="version">v8.0</span>
+        <span class="version">v10.3</span>
       </div>
       <div class="status"><span id="greeting"></span> · <span id="status">conectando…</span></div>
     </header>
@@ -23,6 +23,9 @@
       <button type="button" class="tab active" data-view="chat" title="Conversación libre con memoria y búsqueda web">Chat</button>
       <button type="button" class="tab" data-view="home" title="Resumen del estado del sistema y últimos casos">Inicio</button>
       <button type="button" class="tab" data-view="maestro" title="Mentor CRONOS: lecciones, biblioteca y códice">Maestro</button>
+      <button type="button" class="tab" data-view="mind" title="Mente Fractal: conocimiento, memoria, preguntas abiertas y sellado">Mente</button>
+      <button type="button" class="tab" data-view="coevolution" title="Grafo vivo: usuario, obras, conocimiento y siguiente movimiento">Evolución</button>
+      <button type="button" class="tab" data-view="author" title="Analizar tu obra, tu voz y tu evolución como escritor">Autor</button>
       <button type="button" class="tab" data-view="case" title="Analizar un sistema con el protocolo CRONOS">Caso</button>
       <button type="button" class="tab" data-view="learn" title="Diseñar trayectorias de aprendizaje">Aprendizaje</button>
       <button type="button" class="tab" data-view="coaching" title="Curso Formación y Calidad + auditoría de llamadas">Coaching</button>
@@ -99,7 +102,7 @@
 
           <div class="chat-options">
             <label class="chat-opt"><input type="checkbox" id="chat-opt-long" /> Versión larga</label>
-            <label class="chat-opt chat-mode"><span>Modo</span> <select id="chat-mode"><option value="organic">Conversación</option><option value="teach">Aprender conmigo</option><option value="analysis">Análisis</option></select></label>
+            <label class="chat-opt chat-mode"><span>Modo</span> <select id="chat-mode"><option value="organic">Conversación</option><option value="teach">Aprender conmigo</option><option value="analysis">Análisis</option><option value="author">Autor</option></select></label>
             <label class="chat-opt"><input type="checkbox" id="chat-opt-web" /> Buscar en internet (solo si lo pides o marcas esto)</label>
             <span id="chat-fractal-badge" class="chat-badge fractal" title="Logaritmo de re-cifrado del Codex">G0</span>
           </div>
@@ -118,11 +121,145 @@
         </div>
       </section>
 
+      <section id="view-mind" class="view">
+        <div class="card">
+          <h2>Mente Fractal · Maestro y Aprendiz</h2>
+          <p class="muted">Aquí puedes ver el conocimiento estructural que CEOS ha consolidado. La fractalización usa nodos, relaciones, procedencia y referencias; no afirma compresión mágica ni conciencia subjetiva.</p>
+          <div class="stats-grid" id="mind-summary">Cargando mente…</div>
+          <div class="life-dashboard-grid">
+            <div class="card inner-card">
+              <h3>Buscar en la mente</h3>
+              <div class="inline-form">
+                <input id="mind-query" type="text" placeholder="Ej.: Béchamp y medio interno" />
+                <button id="btn-mind-search" type="button" class="primary">Explorar</button>
+              </div>
+              <pre id="mind-results" class="result mono" style="white-space:pre-wrap;max-height:520px;overflow:auto">Introduce una pregunta.</pre>
+            </div>
+            <div class="card inner-card">
+              <h3>Aprendizaje perpetuo</h3>
+              <p class="muted">CEOS puede registrar nuevos conocimientos, consolidar relaciones y formular preguntas abiertas.</p>
+              <textarea id="mind-learn-text" rows="5" placeholder="Añade una corrección, descubrimiento, relación o hipótesis…"></textarea>
+              <div class="inline-form">
+                <input id="mind-learn-topic" type="text" placeholder="Tema" />
+                <select id="mind-learn-evidence"><option>E1</option><option>E2</option><option selected>E3</option><option>E4</option><option>E5</option></select>
+                <button id="btn-mind-learn" type="button">Aprender</button>
+              </div>
+              <button id="btn-mind-consolidate" type="button">Consolidar</button>
+              <button id="btn-mind-seal" type="button">Crear sello</button>
+            </div>
+            <div class="card inner-card">
+              <h3>Maestro / Aprendiz</h3>
+              <pre id="mind-directive" class="result mono" style="white-space:pre-wrap;max-height:430px;overflow:auto">Directiva no cargada.</pre>
+            </div>
+            <div class="card inner-card">
+              <h3>Preguntas abiertas</h3>
+              <pre id="mind-questions" class="result mono" style="white-space:pre-wrap;max-height:430px;overflow:auto">Sin preguntas cargadas.</pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
       
       
+      <section id="view-coevolution" class="view">
+        <div class="card">
+          <h2>Grafo Vivo · Coevolución</h2>
+          <p class="muted">CEOS relaciona tres cosas distintas: quién eres y qué quieres aprender, qué contienen tus obras/proyectos y qué sabe o necesita aprender CEOS. El grafo conserva postura, evidencia, dominio y relaciones; no pretende demostrar conciencia.</p>
+          <div class="stats-grid" id="coevolution-summary">Cargando grafo vivo…</div>
+          <div class="card inner-card" style="margin-top:14px">
+            <h3>Mapa visual del grafo</h3>
+            <p class="muted">No es una ilustración decorativa: muestra las relaciones que CEOS está conservando entre tú, tus obras, tus inventos, dominios y conceptos. El foco puede cambiarse con la búsqueda.</p>
+            <div class="graph-toolbar">
+              <input id="coevolution-graph-focus" type="text" placeholder="Foco: FORMA 333, astroteología, poda…" />
+              <button id="btn-coevolution-graph" type="button">Actualizar mapa</button>
+            </div>
+            <div id="coevolution-graph-canvas" class="coevolution-graph-canvas" aria-label="Grafo de coevolución"></div>
+          </div>
+          <div class="card inner-card" style="margin-top:14px">
+            <h3>Mis obras y proyectos</h3>
+            <p class="muted">El mismo grafo conecta literatura e invención: obras, proyectos, conceptos y relaciones. Los datos técnicos se mantienen como afirmaciones de fuente o hipótesis según su evidencia.</p>
+            <div id="coevolution-works" class="stats-grid">Cargando obras y proyectos…</div>
+            <pre id="coevolution-work-detail" class="result mono" style="white-space:pre-wrap;max-height:360px;overflow:auto">Selecciona una obra o proyecto.</pre>
+          </div>
+          <div class="life-dashboard-grid">
+            <div class="card inner-card">
+              <h3>Siguiente movimiento</h3>
+              <div class="inline-form"><input id="coevolution-query" type="text" placeholder="Contexto: astroteología, mi escritura, Béchamp…" /><button id="btn-coevolution-autopilot" type="button" class="primary">Decidir siguiente paso</button></div>
+              <pre id="coevolution-autopilot" class="result mono" style="white-space:pre-wrap;max-height:520px;overflow:auto">Sin diagnóstico todavía.</pre>
+            </div>
+            <div class="card inner-card">
+              <h3>Maestro</h3>
+              <p class="muted">CEOS selecciona qué enseñarte a partir de dominio, importancia y evidencia.</p>
+              <pre id="coevolution-teacher" class="result mono" style="white-space:pre-wrap;max-height:420px;overflow:auto">Sin recomendación todavía.</pre>
+              <button id="btn-coevolution-teach" type="button">Preparar próxima lección</button>
+            </div>
+            <div class="card inner-card">
+              <h3>Aprendiz</h3>
+              <p class="muted">Antes de enseñar como hecho, CEOS identifica dónde debe investigar o contrastar.</p>
+              <pre id="coevolution-research" class="result mono" style="white-space:pre-wrap;max-height:420px;overflow:auto">Sin cola de investigación.</pre>
+              <button id="btn-coevolution-research" type="button">Planear investigación</button>
+            </div>
+            <div class="card inner-card">
+              <h3>Gaps y preguntas</h3>
+              <pre id="coevolution-gaps" class="result mono" style="white-space:pre-wrap;max-height:420px;overflow:auto">Sin datos.</pre>
+            </div>
+            <div class="card inner-card">
+              <h3>Buscar en el grafo</h3>
+              <div class="inline-form"><input id="coevolution-search" type="text" placeholder="Ej.: poda, Julia, Nietzsche, infinitud discreta" /><button id="btn-coevolution-search" type="button">Buscar</button></div>
+              <pre id="coevolution-results" class="result mono" style="white-space:pre-wrap;max-height:460px;overflow:auto">Introduce un término.</pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-author" class="view">
+        <div class="card">
+          <h2>Laboratorio de Autor · CEOS v9</h2>
+          <p class="muted">CEOS trabaja aquí como crítico literario, editor y maestro de escritura. Primero lee el corpus; después separa evidencia, interpretación y propuesta; finalmente lo cruza con Cronos-Espiral-OCa sin reducir la literatura a una fórmula.</p>
+          <div class="inline-form">
+            <input id="author-name" type="text" value="David de la Fuente Alonso" placeholder="Autor o identificador del corpus" />
+            <select id="author-focus">
+              <option value="obra completa">Obra completa</option>
+              <option value="voz y estilo">Voz y estilo</option>
+              <option value="estructura y ritmo">Estructura y ritmo</option>
+              <option value="personajes y diálogo">Personajes y diálogo</option>
+              <option value="poda y precisión">Poda y precisión</option>
+              <option value="Cronos-Espiral-OCA">Cronos-Espiral-OCA</option>
+            </select>
+            <label class="chat-opt"><input type="checkbox" id="author-use-llm" checked /> Usar LLM para análisis profundo</label>
+            <button id="btn-author-analyze" type="button" class="primary">Analizar mi obra</button>
+          </div>
+          <div class="stats-grid" id="author-summary">Preparado para analizar el corpus.</div>
+          <div class="life-dashboard-grid">
+            <div class="card inner-card">
+              <h3>Diagnóstico</h3>
+              <div id="author-report" class="result" style="white-space:pre-wrap;max-height:620px;overflow:auto">Todavía no hay análisis.</div>
+            </div>
+            <div class="card inner-card">
+              <h3>Rasgos y riesgos detectados</h3>
+              <div id="author-strengths" class="result"></div>
+              <div id="author-risks" class="result" style="margin-top:12px"></div>
+            </div>
+            <div class="card inner-card">
+              <h3>CRONOS-Espiral-OCA aplicado a la obra</h3>
+              <pre id="author-cronos" class="result mono" style="white-space:pre-wrap;max-height:420px;overflow:auto">Sin análisis.</pre>
+            </div>
+            <div class="card inner-card">
+              <h3>Próxima lección de escritura</h3>
+              <div id="author-lesson" class="result">El laboratorio propondrá un ejercicio después del diagnóstico.</div>
+              <button id="btn-author-lesson" type="button">Generar ejercicio</button>
+            </div>
+          </div>
+          <div class="card inner-card" style="margin-top:16px">
+            <h3>Qué debe hacer CEOS aquí</h3>
+            <p class="muted">No debe limitarse a decir «me gusta/no me gusta». Tiene que localizar el mecanismo que produce el efecto, señalar dónde falla o se debilita, proteger lo singular de la voz y convertir cada observación en una prueba de escritura. En paralelo debe mapear génesis, estados, relaciones, transformaciones y retornos del texto mediante CRONOS-Espiral-OCa.</p>
+          </div>
+        </div>
+      </section>
+
       <section id="view-life" class="view">
         <div class="card">
-          <h2>CEOS v8 · Vida adaptativa</h2>
+          <h2>CEOS v9 · Vida adaptativa</h2>
           <p class="muted">Aquí puedes ver la continuidad de CEOS como sistema: objetivos, iniciativas, experimentos ex ante y lagunas de modelo. Proponer no significa ejecutar.</p>
           <div class="stats-grid" id="agency-summary">Cargando agencia…</div>
           <div class="life-dashboard-grid">
@@ -210,11 +347,12 @@
                 <option value="es">Español</option>
                 <option value="fr">Français</option>
                 <option value="it">Italiano</option>
-                <option value="pt">Português</option>
+                <option value="pt">Português (Portugal)</option>
               </select>
             </label>
             <label class="chat-opt"><input type="checkbox" id="lang-long" /> Versión un poco más larga</label>
           </div>
+          <div id="lang-program" class="result lang-program hidden"></div>
           <div id="lang-roles" class="lang-roles"></div>
           <div id="lang-session" class="lang-session hidden">
             <div class="lang-meta">
@@ -376,7 +514,7 @@
         
         <div class="card">
           <h2>API gratuita (opcional)</h2>
-          <p class="muted">Para documentos profundos de más calidad. Recomendado: <strong>Groq</strong> (gratis). También Gemini. Las claves se guardan solo en este PC (<code>data/llm_keys.json</code>).</p>
+          <p class="muted">Para documentos profundos de más calidad. Puedes usar <strong>Groq</strong> o Gemini. En local pueden guardarse en <code>data/llm_keys.json</code>. En Render usa exclusivamente Environment Secrets; por seguridad CEOS no guarda claves en disco público. Para Gemini, usa una clave actualmente autorizada para tu proyecto.</p>
           <label>GROQ_API_KEY (gratis — console.groq.com)</label>
           <input type="password" id="key-groq" placeholder="gsk_..." />
           <label>GEMINI_API_KEY (gratis — aistudio.google.com)</label>
@@ -663,7 +801,7 @@
 
   
   <script>
-  /* Chat operativo embebido — no depende de caché de app.js */
+  /* Chat operativo embebido — v10.3: continuidad visible, charla cotidiana y entrenamiento PT-PT */
   (function () {
     function sid() {
       var k = "ceos_chat_sid";
@@ -674,24 +812,101 @@
       }
       return v;
     }
-    function bubble(role, text) {
-      var box = document.getElementById("chat-messages");
-      if (!box) return;
+    function setSid(v) { localStorage.setItem("ceos_chat_sid", v); }
+    function chatBox() { return document.getElementById("chat-messages"); }
+    function bubble(role, text, meta, opts) {
+      opts = opts || {};
+      var box = chatBox();
+      if (!box) return null;
       var div = document.createElement("div");
-      div.className = "chat-bubble " + (role === "user" ? "user" : "assistant");
-      div.innerHTML =
-        '<div class="bubble-meta">' +
-        (role === "user" ? "Tú" : "CEOS") +
-        "</div><div class=\"bubble-body\"></div>";
-      div.querySelector(".bubble-body").textContent = text;
+      div.className = "chat-bubble " + (role === "user" ? "user" : "assistant") + (opts.typing ? " typing" : "");
+      div.dataset.engine = opts.engine || "";
+      div.innerHTML = '<div class="bubble-meta"></div><div class="bubble-body"></div>';
+      div.querySelector(".bubble-meta").textContent = meta || (role === "user" ? "Tú" : "CEOS");
+      div.querySelector(".bubble-body").textContent = text || "";
+      if (role !== "user" && !opts.typing && text) {
+        var actions = document.createElement("div");
+        actions.className = "bubble-actions";
+        actions.innerHTML = '<button type="button" data-feedback="up" title="Esta respuesta me sirve">✓</button><button type="button" data-feedback="down" title="Esta respuesta no me sirve">↺</button>';
+        actions.querySelectorAll("button").forEach(function (b) {
+          b.addEventListener("click", function () {
+            sendFeedback(b.getAttribute("data-feedback"), text, div);
+          });
+        });
+        div.appendChild(actions);
+      }
       box.appendChild(div);
       box.scrollTop = box.scrollHeight;
+      return div;
     }
+    function clearBubbles() { var box = chatBox(); if (box) box.innerHTML = ""; }
     function status(msg) {
       var el = document.getElementById("chat-status");
       if (el) el.textContent = msg || "";
       var st = document.getElementById("status");
       if (st && msg) st.textContent = msg;
+    }
+    function typing(on) {
+      var existing = document.getElementById("chat-typing");
+      if (on) {
+        if (existing) return;
+        var el = bubble("assistant", "CEOS está pensando…", "CEOS · escribiendo", {typing:true});
+        if (el) el.id = "chat-typing";
+      } else if (existing && existing.parentNode) { existing.parentNode.removeChild(existing); }
+    }
+    function updateBadges(data) {
+      var e=document.getElementById("chat-engine-badge"); if(e) e.textContent=data.engine||data.mode||"local";
+      var m=document.getElementById("chat-memory-badge");
+      var mem=data.memory && data.memory.stats; if(m) m.textContent="mem "+((mem && (mem.items||mem.facts||mem.entries))||0);
+      var a=document.getElementById("chat-adaptive-badge");
+      var ad=data.adaptive||{}; if(a) a.textContent="adapt "+Math.round((Number(ad.mastery||ad.progress||0))*100)+"%";
+      var f=document.getElementById("chat-fractal-badge");
+      var fr=data.fractal||{}; if(f) f.textContent="G"+(fr.generation||0);
+      var cs=document.getElementById("chat-session-label"); if(cs) cs.textContent="sesión "+sid().slice(-6);
+    }
+    function updateConversationState(data) {
+      var st=data.conversation_state||{};
+      var focus=document.getElementById("ceos-life-focus");
+      if(focus && st.last_topic) focus.textContent="foco · "+st.last_topic;
+      var next=document.getElementById("ceos-life-next");
+      if(next && st.last_intent) next.textContent="hilo · "+st.last_intent+(st.turns?" · "+st.turns+" turnos":"");
+    }
+    async function sendFeedback(kind, text, bubbleEl) {
+      try {
+        var accepted = kind === "up";
+        await fetch("/api/chat/feedback", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:accepted?"accept":"reject",text:text,session_id:sid()})});
+        await fetch("/api/coevolution/feedback", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:text,accepted:accepted,note:"feedback desde la charla"})});
+        if (bubbleEl) { bubbleEl.classList.add("feedback-given"); bubbleEl.querySelectorAll(".bubble-actions button").forEach(function(b){b.disabled=true;}); }
+        status(accepted ? "Aprendido: esta forma de respuesta te sirve." : "Aprendido: tendré que ajustar esta respuesta.");
+      } catch(e) { status("No pude registrar el feedback."); }
+    }
+    async function loadChatHistory() {
+      try {
+        var res=await fetch("/api/chat/history?session_id="+encodeURIComponent(sid()));
+        var data=await res.json();
+        if(!res.ok) return;
+        clearBubbles();
+        var msgs=data.messages||[];
+        if(!msgs.length) {
+          bubble("assistant", "Hola. Aquí sí podemos conversar: puedo seguir el hilo, aprender de tus correcciones y dejar la charla tranquila cuando no haya nada más que hacer.");
+        } else {
+          msgs.forEach(function(m){ if(m.role==="user") bubble("user", m.content, "Tú"); else if(m.role==="assistant") bubble("assistant", m.content, "CEOS", {engine:m.engine}); });
+        }
+        var cs=document.getElementById("chat-session-label"); if(cs) cs.textContent="sesión "+sid().slice(-6);
+      } catch(e) { status("No pude recuperar la conversación anterior."); }
+    }
+    async function newChat() {
+      try {
+        var r=await fetch("/api/chat/session",{method:"POST",headers:{"Content-Type":"application/json"}});
+        var d=await r.json();
+        if(d.session_id){ setSid(d.session_id); clearBubbles(); bubble("assistant","Nueva conversación. Mantenemos la memoria larga, pero este hilo empieza limpio."); }
+      } catch(e) { status("No pude abrir una sesión nueva."); }
+    }
+    async function clearChat() {
+      try {
+        await fetch("/api/chat/clear",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session_id:sid()})});
+        clearBubbles(); bubble("assistant","Conversación limpiada. El hilo vuelve a empezar desde aquí.");
+      } catch(e) { status("No pude limpiar la sesión."); }
     }
     window.__ceosSendChat = async function () {
       var input = document.getElementById("chat-input");
@@ -699,13 +914,15 @@
       var text = (input.value || "").trim();
       if (!text) return;
       input.value = "";
-      bubble("user", text);
+      bubble("user", text, "Tú");
+      typing(true);
       status("Pensando…");
+      var sendBtn=document.getElementById("btn-chat-send"); if(sendBtn) sendBtn.disabled=true;
       try {
         var longEl = document.getElementById("chat-opt-long");
         var webEl = document.getElementById("chat-opt-web");
         var ctrl = new AbortController();
-        var timer = setTimeout(function () { ctrl.abort(); }, 45000);
+        var timer = setTimeout(function () { ctrl.abort(); }, 60000);
         var res, data = {};
         try {
           res = await fetch("/api/chat", {
@@ -715,81 +932,42 @@
               message: text,
               session_id: sid(),
               long: !!(longEl && longEl.checked),
-              web: true,
+              web: !!(webEl && webEl.checked),
+              mode: (document.getElementById("chat-mode") || {}).value || "organic",
             }),
             signal: ctrl.signal,
           });
           data = await res.json().catch(function () { return {}; });
-        } finally {
-          clearTimeout(timer);
-        }
-        if (!res.ok) {
-          bubble("assistant", "Error: " + (data.error || res.status));
-          status("Error");
-          return;
-        }
-        bubble("assistant", data.reply || "(sin texto)");
+        } finally { clearTimeout(timer); }
+        typing(false);
+        if (!res.ok) { bubble("assistant", "Error: " + (data.error || res.status)); status("Error"); return; }
+        bubble("assistant", data.reply || "(sin texto)", "CEOS", {engine:data.engine||data.mode||""});
+        updateBadges(data);
+        updateConversationState(data);
         status(data.engine || data.mode || "ok");
-        var head = document.getElementById("status");
-        if (head) head.textContent = "en línea";
+        var head = document.getElementById("status"); if (head) head.textContent = "en línea";
+        if (window.CEOSLoadCoEvolution) setTimeout(window.CEOSLoadCoEvolution, 250);
       } catch (e) {
-        bubble("assistant", "No hay conexión con el servidor: " + e.message);
+        typing(false);
+        bubble("assistant", e.name === "AbortError" ? "He tardado demasiado en responder. Puedes repetir el mensaje sin perder esta sesión." : "No hay conexión con el servidor: " + e.message);
         status("Sin conexión API");
-      }
+      } finally { if(sendBtn) sendBtn.disabled=false; input.focus(); }
     };
     function bind() {
       var btn = document.getElementById("btn-chat-send");
       var form = document.getElementById("chat-form");
       var input = document.getElementById("chat-input");
-      if (btn) {
-        btn.type = "button";
-        btn.onclick = function (e) {
-          e.preventDefault();
-          window.__ceosSendChat();
-          return false;
-        };
-      }
-      if (form) {
-        form.onsubmit = function (e) {
-          e.preventDefault();
-          window.__ceosSendChat();
-          return false;
-        };
-      }
-      if (input) {
-        input.addEventListener("keydown", function (e) {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            window.__ceosSendChat();
-          }
-        });
-      }
-      // chips
-      document.querySelectorAll("#chat-suggestions .chip").forEach(function (chip) {
-        chip.addEventListener("click", function () {
-          var p = chip.getAttribute("data-prompt") || chip.textContent;
-          var input = document.getElementById("chat-input");
-          if (input) input.value = p;
-          window.__ceosSendChat();
-        });
-      });
-      // ping
-      fetch("/health")
-        .then(function (r) { return r.json(); })
-        .then(function () {
-          var head = document.getElementById("status");
-          if (head) head.textContent = "en línea";
-        })
-        .catch(function () {
-          var head = document.getElementById("status");
-          if (head) head.textContent = "API no responde";
-        });
+      if (btn) { btn.type="button"; btn.onclick=function(e){e.preventDefault();window.__ceosSendChat();return false;}; }
+      if (form) { form.onsubmit=function(e){e.preventDefault();window.__ceosSendChat();return false;}; }
+      if (input) { input.addEventListener("keydown",function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();window.__ceosSendChat();}}); }
+      var nb=document.getElementById("btn-chat-new"); if(nb) nb.addEventListener("click",newChat);
+      var cb=document.getElementById("btn-chat-clear"); if(cb) cb.addEventListener("click",clearChat);
+      document.querySelectorAll("#chat-suggestions .chip").forEach(function(chip){chip.addEventListener("click",function(){var p=chip.getAttribute("data-prompt")||chip.textContent;var input=document.getElementById("chat-input");if(input)input.value=p;window.__ceosSendChat();});});
+      fetch("/health").then(function(r){return r.json();}).then(function(){var head=document.getElementById("status");if(head)head.textContent="en línea";}).catch(function(){var head=document.getElementById("status");if(head)head.textContent="API no responde";});
+      loadChatHistory();
     }
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", bind);
-    } else {
-      bind();
-    }
+    window.CEOSLoadChatHistory=loadChatHistory;
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded",bind); else bind();
   })();
   </script>
 
@@ -1708,5 +1886,107 @@
   </script>
 
   <script src="app.js"></script>
+<script>
+(function(){
+  async function mindJSON(url, opts){ const r=await fetch(url, opts||{}); return await r.json(); }
+  function mindText(o){ return JSON.stringify(o, null, 2); }
+  async function loadMind(){
+    try{
+      const s=await mindJSON('/api/mind/status');
+      const el=document.getElementById('mind-summary');
+      if(el) el.innerHTML = '<div><strong>'+s.nodes+'</strong><span class="muted small"> nodos</span></div><div><strong>L'+s.max_level+'</strong><span class="muted small"> profundidad</span></div><div><strong>G'+s.generation+'</strong><span class="muted small"> generación</span></div><div><strong>'+((s.kinds||{}).knowledge||0)+'</strong><span class="muted small"> conocimientos semilla</span></div><div><strong>'+s.encryption+'</strong><span class="muted small"> almacenamiento</span></div>';
+      const d=await mindJSON('/api/mind/teacher?topic=');
+      const de=document.getElementById('mind-directive'); if(de) de.textContent=d.directive||'';
+      const q=await mindJSON('/api/mind/questions'); const qe=document.getElementById('mind-questions'); if(qe) qe.textContent=JSON.stringify(q.questions||[],null,2);
+    }catch(e){ console.error('mind',e); }
+  }
+  function renderCoEvolutionGraph(view){
+    const box=document.getElementById('coevolution-graph-canvas');
+    if(!box) return;
+    const nodes=view.nodes||[], edges=view.edges||[];
+    box.innerHTML='';
+    if(!nodes.length){ box.textContent='Sin nodos para este foco.'; return; }
+    const w=Math.max(760, box.clientWidth||760), h=560, cx=w/2, cy=h/2;
+    const center=nodes.find(n=>n.kind==='person') || nodes.find(n=>n.kind==='agent') || nodes[0];
+    const buckets={agent:[],person:[],work:[],domain:[],concept:[],operator:[],thinker:[],author_trait:[],topic:[],experience:[]};
+    nodes.forEach(n=>(buckets[n.kind]||(buckets[n.kind]=[])).push(n));
+    const positions={};
+    if(center) positions[center.id]={x:cx,y:cy,r:28};
+    const others=nodes.filter(n=>!center||n.id!==center.id);
+    const ringR=Math.min(w,h)*0.34;
+    others.forEach((n,i)=>{
+      const a=(Math.PI*2*i/Math.max(others.length,1))-Math.PI/2;
+      const rr=ringR*(0.88+0.12*((i%3)/2));
+      positions[n.id]={x:cx+Math.cos(a)*rr,y:cy+Math.sin(a)*rr,r:n.kind==='work'?20:16};
+    });
+    const ns='http://www.w3.org/2000/svg'; const svg=document.createElementNS(ns,'svg'); svg.setAttribute('viewBox','0 0 '+w+' '+h); svg.setAttribute('role','img'); svg.className='coevo-svg';
+    const edgeLayer=document.createElementNS(ns,'g'); const nodeLayer=document.createElementNS(ns,'g');
+    edges.forEach(e=>{const a=positions[e.source],b=positions[e.target];if(!a||!b)return;const l=document.createElementNS(ns,'line');l.setAttribute('x1',a.x);l.setAttribute('y1',a.y);l.setAttribute('x2',b.x);l.setAttribute('y2',b.y);l.setAttribute('stroke','currentColor');l.setAttribute('opacity',String(Math.max(.15,Math.min(.6,Number(e.weight||.5)))));l.setAttribute('stroke-width',String(1+2*Number(e.weight||.5)));edgeLayer.appendChild(l);});
+    nodes.forEach(n=>{const p=positions[n.id];if(!p)return;const g=document.createElementNS(ns,'g');g.classList.add('graph-node');g.style.cursor='pointer';
+      const c=document.createElementNS(ns,'circle');c.setAttribute('cx',p.x);c.setAttribute('cy',p.y);c.setAttribute('r',p.r);c.setAttribute('fill','currentColor');c.setAttribute('fill-opacity','0.16');c.setAttribute('stroke','currentColor');c.setAttribute('stroke-width',n.kind==='work'?2.4:1.5);g.appendChild(c);
+      const t=document.createElementNS(ns,'text');t.setAttribute('x',p.x);t.setAttribute('y',p.y+p.r+14);t.setAttribute('text-anchor','middle');t.textContent=(n.label||'').slice(0,26);g.appendChild(t);
+      g.addEventListener('click',async()=>{try{const d=await mindJSON('/api/coevolution/work?label='+encodeURIComponent(n.label));const detail=document.getElementById('coevolution-work-detail');if(detail && d.ok) detail.textContent=JSON.stringify(d,null,2);else if(detail) detail.textContent=JSON.stringify(n,null,2);}catch(e){}});
+      nodeLayer.appendChild(g);
+    });
+    svg.appendChild(edgeLayer);svg.appendChild(nodeLayer);box.appendChild(svg);
+    const legend=document.createElement('div');legend.className='graph-legend';legend.textContent='Nodo central · personas/agente · obras/proyectos · dominios/conceptos';box.appendChild(legend);
+  }
+
+  async function loadCoEvolution(){
+    try{
+      const s=await mindJSON('/api/coevolution/status');
+      const box=document.getElementById('coevolution-summary');
+      if(box){
+        const kinds=Object.entries(s.kinds||{}).slice(0,8).map(([k,v])=>`<div class="stat"><strong>${escapeHtml(k)}</strong><span>${v}</span></div>`).join('');
+        box.innerHTML='<div class="stat"><strong>Nodos</strong><span>'+ (s.nodes||0) +'</span></div><div class="stat"><strong>Relaciones</strong><span>'+ (s.edges||0) +'</span></div><div class="stat"><strong>Generación</strong><span>'+ (s.generation||0) +'</span></div>'+kinds;
+      }
+      const focus=document.getElementById('coevolution-graph-focus')?.value.trim()||'';
+      const gv=await mindJSON('/api/coevolution/view?focus='+encodeURIComponent(focus)+'&limit=70');
+      renderCoEvolutionGraph(gv);
+      // Obras y proyectos: literatura + invención, en el mismo grafo.
+      const works=await mindJSON('/api/coevolution/works');
+      const wb=document.getElementById('coevolution-works');
+      if(wb){
+        wb.innerHTML='';
+        (works.works||[]).forEach(w=>{
+          const b=document.createElement('button'); b.type='button'; b.className='chip'; b.textContent=w.label;
+          b.addEventListener('click', async()=>{
+            const d=await mindJSON('/api/coevolution/work?label='+encodeURIComponent(w.label));
+            const detail=document.getElementById('coevolution-work-detail');
+            if(detail) detail.textContent=JSON.stringify(d,null,2);
+          });
+          wb.appendChild(b);
+        });
+      }
+      const q=document.getElementById('coevolution-query')?.value.trim()||'';
+      const auto=await mindJSON('/api/coevolution/autopilot?q='+encodeURIComponent(q));
+      const ap=document.getElementById('coevolution-autopilot'); if(ap) ap.textContent=JSON.stringify(auto,null,2);
+      const teach=await mindJSON('/api/coevolution/teacher?q='+encodeURIComponent(q));
+      const te=document.getElementById('coevolution-teacher'); if(te) te.textContent=JSON.stringify(teach,null,2);
+      const res=await mindJSON('/api/coevolution/research?q='+encodeURIComponent(q));
+      const rr=document.getElementById('coevolution-research'); if(rr) rr.textContent=JSON.stringify(res,null,2);
+      const gaps=(s.gaps||[]).map(g=>({gap:g.gap,label:g.node&&g.node.label,mastery:g.node&&g.node.mastery,evidence:g.node&&g.node.evidence,stance:g.node&&g.node.stance}));
+      const ge=document.getElementById('coevolution-gaps'); if(ge) ge.textContent=JSON.stringify(gaps,null,2);
+    }catch(e){ console.error('coevolution',e); }
+  }
+
+  window.CEOSLoadMind=loadMind;
+  window.CEOSLoadCoEvolution=loadCoEvolution;
+  document.addEventListener('DOMContentLoaded', function(){
+    document.querySelectorAll('.tab[data-view="mind"]').forEach(b=>b.addEventListener('click', loadMind));
+    document.querySelectorAll('.tab[data-view="coevolution"]').forEach(b=>b.addEventListener('click', loadCoEvolution));
+    const q=document.getElementById('btn-mind-search'); if(q) q.addEventListener('click', async()=>{ const v=document.getElementById('mind-query').value.trim(); if(!v)return; const d=await mindJSON('/api/mind/search?q='+encodeURIComponent(v)); document.getElementById('mind-results').textContent=d.context||mindText(d.results||[]); });
+    const l=document.getElementById('btn-mind-learn'); if(l) l.addEventListener('click', async()=>{ const text=document.getElementById('mind-learn-text').value.trim(); if(!text)return; const d=await mindJSON('/api/mind/learn',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text,topic:document.getElementById('mind-learn-topic').value,evidence:document.getElementById('mind-learn-evidence').value,source:'ui'})}); document.getElementById('mind-results').textContent=mindText(d); loadMind(); });
+    const c=document.getElementById('btn-mind-consolidate'); if(c) c.addEventListener('click', async()=>{ const d=await mindJSON('/api/mind/consolidate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic:document.getElementById('mind-query').value})}); document.getElementById('mind-results').textContent=mindText(d); loadMind(); });
+    const seal=document.getElementById('btn-mind-seal'); if(seal) seal.addEventListener('click', async()=>{ const d=await mindJSON('/api/mind/seal',{method:'POST'}); document.getElementById('mind-results').textContent=mindText(d); });
+    const ca=document.getElementById('btn-coevolution-autopilot'); if(ca) ca.addEventListener('click', loadCoEvolution);
+    const ct=document.getElementById('btn-coevolution-teach'); if(ct) ct.addEventListener('click', async()=>{ const q=document.getElementById('coevolution-query')?.value.trim()||''; const d=await mindJSON('/api/coevolution/teacher?q='+encodeURIComponent(q)); const el=document.getElementById('coevolution-teacher'); if(el) el.textContent=JSON.stringify(d,null,2); });
+    const cr=document.getElementById('btn-coevolution-research'); if(cr) cr.addEventListener('click', async()=>{ const q=document.getElementById('coevolution-query')?.value.trim()||''; const d=await mindJSON('/api/coevolution/research?q='+encodeURIComponent(q)); const el=document.getElementById('coevolution-research'); if(el) el.textContent=JSON.stringify(d,null,2); });
+    const cs=document.getElementById('btn-coevolution-search'); if(cs) cs.addEventListener('click', async()=>{ const q=document.getElementById('coevolution-search').value.trim(); if(!q)return; const d=await mindJSON('/api/coevolution/search?q='+encodeURIComponent(q)+'&limit=15'); const el=document.getElementById('coevolution-results'); if(el) el.textContent=JSON.stringify(d,null,2); });
+    const cg=document.getElementById('btn-coevolution-graph'); if(cg) cg.addEventListener('click', loadCoEvolution);
+    loadCoEvolution();
+  });
+})();
+</script>
 </body>
 </html>

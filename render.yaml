@@ -20,3 +20,5 @@ services:
 
     # - key: CEOS_GROQ_MODEL
     #   value: openai/gpt-oss-120b
+
+# Configure CEOS_MIND_KEY in Render Environment as a secret (Fernet key generated locally with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")

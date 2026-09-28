@@ -1,0 +1,23 @@
+CEOS 10.3 — DESPLIEGUE
+=======================
+
+NUEVO EN ESTA VERSIÓN
+- Conserva el grafo visual y la charla continua de CEOS 10.2.
+- Añade charla cotidiana en portugués europeo.
+- Añade ruta profesional pt-PT orientada a la oferta aportada para Técnico Productividad y Procesos CASH de Prosegur.
+- Incluye práctica de entrevista, UAT, gestión de procesos, mejora continua, manuales, implementación, soporte y viajes España–Portugal.
+- Dictado configurado para pt-PT.
+
+USO
+1. Descomprime el ZIP.
+2. Ejecuta INICIAR_CEOS_SIMPLE.bat en Windows.
+3. Abre la URL local indicada por CEOS.
+4. En "Idiomas", selecciona "Português (Portugal)".
+5. Para la charla cotidiana, elige "Portugués cotidiano (Portugal)".
+6. Para preparar la oferta, usa los escenarios profesionales de Prosegur.
+
+IMPORTANTE
+- Con API LLM configurada, CEOS mantiene conversación libre y corrección contextual.
+- Sin API, funciona con continuaciones locales y correcciones estructuradas.
+- La ruta profesional se basa en el texto de la oferta proporcionado por el usuario; no añade requisitos que no aparezcan en dicha oferta.
+- La prueba de integración real con Flask, proveedor LLM y despliegue externo requiere un entorno que disponga de esas dependencias/credenciales. La compilación y suite interna sí se han verificado.

@@ -105,6 +105,8 @@ class AdaptiveCore:
 
         if re.search(r"\b(enséñame|enseñame|aprende conmigo|quiero aprender|dame una lección|dame una leccion|ponme a prueba|hazme un ejercicio|maestro|tutor)\b", low):
             intent = "teach"
+        elif re.search(r"\b(autor|escritor|escritora|mis libros|mi obra|mi novela|mis cuentos|mi estilo|voz narrativa|analiza mi obra)\b", low):
+            intent = "author"
         elif re.search(r"\b(analiza|diagnostica|descompón|descompone|compara|contrasta|evalúa|evalua|demuestra|refuta)\b", low):
             intent = "analysis"
         elif re.search(r"\b(qué hago|que hago|cómo lo harías|como lo harias|planifica|diseña|construye|desarrolla|continúa|continua)\b", low):
@@ -117,7 +119,7 @@ class AdaptiveCore:
             intent = "social"
 
         mode = explicit_mode or ("teach" if intent == "teach" else "organic")
-        if mode not in {"organic", "teach", "analysis"}:
+        if mode not in {"organic", "teach", "analysis", "author"}:
             mode = "organic"
 
         words = re.findall(r"\w+", t)
@@ -134,6 +136,8 @@ class AdaptiveCore:
         move = "answer"
         if intent == "teach":
             move = "teach_one_step"
+        elif intent == "author":
+            move = "author_diagnose_and_teach"
         elif intent == "correction":
             move = "acknowledge_and_update"
         elif question:
@@ -359,6 +363,20 @@ class AdaptiveCore:
             "y cuando sea útil hazme una pregunta breve que me obligue a recuperar o aplicar. "
             "No conviertas cada turno en un examen ni en una lección prefabricada."
         )
+
+    def author_directive(self, topic: str = "") -> str:
+        return (
+            "MODO LABORATORIO DE AUTOR:\n"
+            f"Foco: {topic or 'obra y evolución del escritor'}\n"
+            "Analiza el texto antes de juzgar al autor. Separa evidencia textual, inferencia y propuesta. "
+            "Busca fortalezas reales y también límites: poda, ritmo, arquitectura de escena, voces, exposición, "
+            "subtexto, conflicto, finales, precisión sintáctica y control del lector. No impones una voz ajena: "
+            "proteges lo singular y trabajas lo que impide que esa singularidad alcance toda su potencia. "
+            "Después conecta, cuando haya evidencia, el texto con CRONOS-Espiral-OCA: génesis, pérdida, encuentro, "
+            "desafío, transformación, sustitución, integración, condiciones, relaciones, estados y retorno transformado. "
+            "Termina con una acción práctica de escritura, no con una valoración abstracta."
+        )
+
 
     def profile_snapshot(self) -> dict:
         return {

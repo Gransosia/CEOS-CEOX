@@ -1,35 +1,82 @@
-CEOS v8.1.0 — corrección LLM / Groq (24-09-2026)
-===========================================================
+CEOS v10.0.0 — auditoría y endurecimiento LLM (26-09-2026)
+=========================================================
 
-La v8.0 usaba por defecto IDs Groq antiguos. En v8.1 CEOS abandona esa dependencia:
-prueba modelos actuales y hace fallback automático cuando uno está retirado o bloqueado.
+OBJETIVO
+--------
+Esta versión consolida Living Entity + Adaptive Mentor + Agency y endurece la capa
+LLM para que una credencial válida no dependa de un único modelo fijo ni provoque
+bucles de errores, llamadas innecesarias o exposición de secretos.
 
-MODELOS ACTUALES DE REFERENCIA
--------------------------------
-openai/gpt-oss-120b
-openai/gpt-oss-20b
-qwen/qwen3.8-27b
-minimaxai/minimax-m2.7
+LLM RESILIENTE
+--------------
+- Descubrimiento de modelos perezoso y cacheado.
+- Cuando el proveedor devuelve una lista visible de modelos, CEOS sólo usa esa realidad.
+- Los nombres preferidos son pistas, nunca una autorización para usar un modelo no visible.
+- Si el descubrimiento falla por 401/403/404, CEOS no martillea modelos supuestos.
+- Si falla por red/5xx, mantiene un fallback controlado y temporal.
+- Circuit breaker por proveedor y por modelo.
+- Backoff + Retry-After para 429 y errores temporales.
+- Éxito limpia los circuit breakers relacionados.
+- OpenAI: Responses API primero; Chat Completions sólo como compatibilidad ante 400/404.
+- Gemini: Interactions API primero; generateContent como compatibilidad ante 400/404. La clave se envía exclusivamente en x-goog-api-key.
+- Diagnósticos redacted y acotados.
+- Probe real con caché y bloqueo contra sondas concurrentes.
 
-Si CEOS_GROQ_MODEL contiene un ID retirado conocido, se ignora automáticamente.
+SEGURIDAD
+---------
+- En Render las claves deben ser Environment Secrets.
+- El endpoint que recibe claves exige CEOS_ADMIN_TOKEN en despliegues públicos.
+- Por defecto no se permite escribir llm_keys.json en Render.
+- Las sondas públicas están rate-limitadas.
+- Las respuestas visibles no incluyen notas técnicas de errores internos del proveedor.
 
-DESPLIEGUE EN RENDER
---------------------
-1. Sube/reemplaza TODO el proyecto en GitHub.
-2. Render hará el redeploy.
-3. No hace falta borrar CEOS_GROQ_MODEL si tenía un modelo antiguo: v8.1 lo salta.
-4. Mantén GROQ_API_KEY como secreto de Render.
+COMPROBACIÓN
+------------
+GET /health
+  Salud del servicio web; no consume cuota LLM.
 
-Comprobación sin generar texto:
-https://ceos-ceox-3.onrender.com/api/llm/status?probe=1
+GET /api/llm/status
+  Estado cacheado/configurado; no genera texto.
 
-O desde CEOS → Inicio → Motor de redacción → Comprobar API.
+GET /api/llm/status?refresh=1
+  Refresca descubrimiento de modelos; rate-limitado.
 
-Interpretación:
-- probe.ok=true: credencial aceptada y se ven modelos.
-- 401: credencial inválida/caducada.
-- 403: permisos/modelo/proyecto.
-- 429: cuota o rate limit.
+GET /api/llm/health
+  Devuelve el último resultado de una sonda real; no hace red si no se solicita probe.
 
-El chat ya no presenta cualquier 403 como “clave mala”. Además, si un modelo no
-funciona, intenta automáticamente el siguiente modelo actual disponible.
+GET /api/llm/health?probe=1
+  Hace una generación mínima real; rate-limitada y protegida contra sondas concurrentes.
+
+RENDER
+------
+1. Reemplaza el contenido del repositorio por esta versión.
+2. Mantén GROQ_API_KEY (o una alternativa como GEMINI_API_KEY) en Environment.
+3. Opcional: CEOS_LLM_PRIMARY=groq.
+4. No pongas claves en GitHub ni en index.html/app.js.
+5. Comprueba /health y después /api/llm/health?probe=1.
+6. En la interfaz, usa «Comprobar API».
+
+LIMITACIÓN DE ESTA AUDITORÍA
+----------------------------
+La revisión automatizada local verifica sintaxis, pruebas unitarias, reglas de fallback,
+redacción de secretos y contratos internos. El servidor Flask completo no puede arrancarse
+en este entorno de auditoría porque las dependencias web no están instaladas y este entorno
+no tiene acceso de red para descargarlas. La prueba final con la credencial real debe hacerse
+en tu Render.
+
+GEMINI
+------
+Las guías actuales de Google recomiendan la API Interactions para proyectos nuevos; CEOS mantiene generateContent REST por ser un puente ligero y compatible. En septiembre de 2026 Google está rechazando claves estándar sin el esquema de autorización requerido, por lo que una clave Gemini antigua puede producir 401/403 aunque el código sea correcto. Si Gemini falla, revisa el tipo y las restricciones de la clave en AI Studio/Google Cloud.
+
+--- CEOS 9.0 · MENTE FRACTAL ---
+
+Nueva variable recomendada en Render:
+CEOS_MIND_KEY = clave Fernet persistente para cifrar la cápsula de memoria fractal.
+
+Generarla en local:
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+No la subas a GitHub. Configúrala en Render Environment como Secret.
+
+La memoria fractal se guarda como cápsula cifrada en data/mind/mind.capsule y su índice no contiene el contenido textual completo.
+El endpoint /api/mind/status permite comprobar generación, profundidad y estado del cifrado.

@@ -1,9 +1,9 @@
 @echo off
-title CEOS v8 - Living Entity
+title CEOS v8.3 - Living Entity
 cd /d "%~dp0"
 
 echo.
-echo CEOS v8 - Motor CRONOS-Espiral + Living Entity
+echo CEOS v8.3 - Motor CRONOS-Espiral + Living Entity
 echo.
 
 where python >nul 2>&1
@@ -30,6 +30,8 @@ set CEOS_LIFE_BACKGROUND=1
 set CEOS_LIFE_INTERVAL=20
 set CEOS_AGENCY_BACKGROUND=1
 set CEOS_ADAPTIVE=1
+set PYTHONUTF8=1
+set PIP_DISABLE_PIP_VERSION_CHECK=1
 
 echo.
 echo Abriendo CEOS en el navegador...

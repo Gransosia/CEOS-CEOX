@@ -1,11 +1,11 @@
 @echo off
-title CEOS v8 - Motor CRONOS-Espiral + Living Entity
+title CEOS v10.0 - Motor CRONOS-Espiral + Grafo Vivo
 color 0B
 cd /d "%~dp0"
 
 echo.
 echo  ========================================================
-echo    CEOS v8  -  Motor CRONOS-Espiral + Living Entity
+echo    CEOS v10.0  -  Motor CRONOS-Espiral + Grafo Vivo
 echo  ========================================================
 echo.
 
@@ -38,7 +38,7 @@ if errorlevel 1 (
 )
 
 if not exist "data" mkdir data
-for %%D in (identity memory grammar library mentor codex user uploads chat long_memory coaching evolve life agency) do (
+for %%D in (identity memory grammar library mentor codex user uploads chat long_memory coaching evolve life agency adaptive coevolution) do (
     if not exist "data\%%D" mkdir "data\%%D"
 )
 
@@ -47,6 +47,8 @@ set CEOS_LIFE_BACKGROUND=1
 set CEOS_LIFE_INTERVAL=20
 set CEOS_AGENCY_BACKGROUND=1
 set CEOS_ADAPTIVE=1
+set PYTHONUTF8=1
+set PIP_DISABLE_PIP_VERSION_CHECK=1
 
 echo  Arrancando servidor...
 echo  Se abrira el navegador en unos segundos.

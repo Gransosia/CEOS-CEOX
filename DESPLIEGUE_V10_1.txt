@@ -1,0 +1,9 @@
+CEOS v10.2 — despliegue
+
+1. Sustituye el contenido del repositorio GitHub por este paquete.
+2. Haz commit en main.
+3. Render redeploy automático.
+4. Abre la URL y comprueba /health.
+5. En Chat, la casilla «Buscar en internet» está apagada por defecto.
+6. En Evolución > Mis obras y proyectos deben aparecer literatura + FORMA 333 / Olla lenta + SAD / Tubería + CRONOS-333.
+7. No subas API keys al repositorio. Mantén secretos en Render Environment.

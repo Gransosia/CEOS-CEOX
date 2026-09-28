@@ -1,0 +1,22 @@
+CEOS v10.1 — DESPLIEGUE
+
+LOCAL
+1. Descomprime el paquete.
+2. Ejecuta INICIAR_CEOS.bat.
+3. Abre http://127.0.0.1:5000
+4. Entra en la pestaña Evolución.
+
+ONLINE / RENDER
+1. Sustituye en el repositorio conectado a Render la aplicación por este paquete.
+2. Conserva CEOS_DATA_DIR=/var/data.
+3. Configura CEOS_MIND_KEY como secreto estable.
+4. Mantén las API keys de LLM sólo como Environment Secrets.
+5. Si usas disco persistente, monta /var/data.
+6. Si no existe almacenamiento persistente, usa Sync para exportar el snapshot completo periódicamente.
+
+COMPROBACIONES
+GET /health
+GET /api/meta
+GET /api/coevolution/status
+GET /api/coevolution/autopilot?q=escritura
+GET /api/coevolution/research?q=Béchamp

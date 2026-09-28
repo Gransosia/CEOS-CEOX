@@ -1,4 +1,4 @@
-/* CEOS v8 — Living Entity + Adaptive Mentor + GitHub Bridge */
+/* CEOS v9.0 — Fractal Mind + Living Entity + Adaptive Mentor + Author Lab + GitHub Bridge */
 const DEVICE_ID_KEY = "ceos_device_id";
 
 function getDeviceId() {
@@ -53,6 +53,7 @@ function showView(name) {
   if (name === "lang") try { loadLangRoles(); } catch (e) {}
   if (name === "coaching") try { loadCoachingCourse(); } catch (e) {}
   if (name === "life") try { loadAgencyDashboard(); } catch (e) {}
+  if (name === "author") try { loadAuthorCorpus(); } catch (e) {}
   return true;
 }
 
@@ -60,6 +61,7 @@ const VOICE_ROUTES = [
   { re: /\b(chat|conversaci[oó]n|hablar con ceos)\b/i, view: "chat" },
   { re: /\b(inicio|home|principal)\b/i, view: "home" },
   { re: /\b(maestro|mentor)\b/i, view: "maestro" },
+  { re: /\b(autor|escritor|mis libros|mi obra|laboratorio de autor)\b/i, view: "author" },
   { re: /\b(caso|an[aá]lisis)\b/i, view: "case" },
   { re: /\b(aprendizaje|aprender|trayector)/i, view: "learn" },
   { re: /\b(idioma|idiomas|ceox|ingl[eé]s|pr[aá]ctica de idiomas)\b/i, view: "lang" },
@@ -68,6 +70,7 @@ const VOICE_ROUTES = [
   { re: /\b(infinitud|gram[aá]tica|c[oó]dice)\b/i, view: "grammar" },
   { re: /\b(sync|sincroniz)/i, view: "sync" },
   { re: /\b(vida|agencia|agencia de ceos|objetivos|iniciativas)/i, view: "life" },
+  { re: /\b(mente|mente fractal|conocimiento fractal|memoria fractal|sello)/i, view: "mind" },
 ];
 
 function matchVoiceRoute(transcript) {
@@ -945,18 +948,22 @@ async function refreshTrajectories() {
 
 async function checkLLMApi() {
   const box = document.getElementById("llm-status-box");
-  if (box) { box.className = "result"; box.textContent = "Comprobando credencial y modelos…"; }
+  if (box) { box.className = "result"; box.textContent = "Probando autenticación y una generación real…"; }
   try {
-    const d = await api("/api/llm/status?probe=1");
-    const p = d.probe;
-    if (p && p.ok) {
-      const rec = p.recommended || d.groq_model || "modelo disponible";
-      if (box) { box.className = "result ok"; box.textContent = `Groq OK · ${rec}`; }
-      refreshChatBadge("groq");
+    const d = await api("/api/llm/health?probe=1");
+    const p = d.probe || {};
+    if (p.ok) {
+      const provider = p.working_provider || "LLM";
+      const model = p.working_model || "modelo disponible";
+      if (box) { box.className = "result ok"; box.textContent = `${provider.toUpperCase()} OK · ${model}`; }
+      refreshChatBadge(provider + ":" + model);
       return d;
     }
-    const msg = (p && p.diagnosis) || d.hint || "No se pudo comprobar la API.";
-    if (box) { box.className = "result warn"; box.textContent = "Groq: " + msg; }
+    const errors = (p.providers || []).map(x => `${x.provider}: ${x.diagnosis || "falló"}`).join(" · ");
+    const msg = d.error === "probe_rate_limited"
+      ? `Demasiadas comprobaciones seguidas. Espera ${d.retry_after_s || "unos segundos"} s.`
+      : (errors || p.diagnosis || d.hint || "No se pudo comprobar la API.");
+    if (box) { box.className = "result warn"; box.textContent = msg; }
     return d;
   } catch (e) {
     if (box) { box.className = "result warn"; box.textContent = "No se pudo comprobar: " + (e.message || e); }
@@ -974,10 +981,10 @@ async function refreshMaestro() {
       const llm = await api("/api/llm/status");
       const el = document.getElementById("llm-status");
       if (el) {
-        el.textContent = llm.available
-          ? "Redacción profunda ACTIVA (" + llm.providers.join(", ") + ")"
-          : (llm.hint || "Sin API key — modo local");
-        el.style.color = llm.available ? "var(--ok)" : "var(--muted)";
+        el.textContent = llm.ready
+          ? "LLM listo (" + llm.providers.join(", ") + ")"
+          : (llm.available ? "API configurada; comprueba la generación real" : (llm.hint || "Sin API key — modo local"));
+        el.style.color = llm.ready ? "var(--ok)" : (llm.available ? "var(--warn)" : "var(--muted)");
       }
       const cs = await api("/api/codex/stats");
       const csel = document.getElementById("codex-stats");
@@ -1807,6 +1814,31 @@ const langState = {
   history: [],
 };
 
+async function loadLangProgram(target) {
+  const box = document.getElementById("lang-program");
+  if (!box) return;
+  if (target !== "pt") {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+  try {
+    const data = await api("/api/lang/program?target_lang=pt");
+    const p = data.program;
+    if (!p) return;
+    box.classList.remove("hidden");
+    const focus = (p.focus || []).map(x => `<span class="chip">${x}</span>`).join(" ");
+    const mods = (p.modules || []).map(m => `<div style="margin-top:6px"><strong>${m.title}</strong> — ${m.goal}</div>`).join("");
+    box.innerHTML = `<strong>Português (Portugal) · Ruta profesional orientada a Prosegur CASH</strong>
+      <div class="muted" style="margin-top:6px">Primero conversación natural; después corrección y vocabulario profesional. No se mezclará automáticamente portugués brasileño.</div>
+      <div style="margin-top:8px">${focus}</div>
+      <div style="margin-top:8px">${mods}</div>`;
+  } catch (e) {
+    box.classList.remove("hidden");
+    box.textContent = "Ruta de portugués profesional no disponible en este momento.";
+  }
+}
+
 async function loadLangRoles() {
   const box = document.getElementById("lang-roles");
   if (!box) return;
@@ -1899,13 +1931,16 @@ async function sendLangTurn() {
       langAppend("partner", "🇪🇸 " + res.partner_message_es);
     }
     const corr = document.getElementById("lang-corrections");
+    let html = "";
     if (res.corrections && res.corrections.length) {
-      corr.innerHTML = res.corrections
+      html += res.corrections
         .map((c) => `<div>→ <strong>${c.corrected}</strong> — ${c.explanation}</div>`)
         .join("");
-    } else {
-      corr.innerHTML = "";
     }
+    if (res.pt_focus && res.pt_focus.length) {
+      html += `<div style="margin-top:8px"><strong>Foco:</strong> ${res.pt_focus.join(" · ")}</div>`;
+    }
+    corr.innerHTML = html;
     document.getElementById("lang-status").textContent = "motor: " + (res.engine || "local");
   } catch (e) {
     document.getElementById("lang-status").textContent = "Error de red";
@@ -1926,6 +1961,10 @@ function bindLangUI() {
     langState.roleId = null;
     langState.history = [];
   });
+  document.getElementById("lang-target")?.addEventListener("change", (e) => {
+    loadLangProgram(e.target.value);
+  });
+  loadLangProgram(document.getElementById("lang-target")?.value || "en");
   const mic = document.getElementById("lang-mic");
   if (mic) {
     mic.addEventListener("click", () => {
@@ -1935,7 +1974,7 @@ function bindLangUI() {
         return;
       }
       const rec = new SR();
-      const langMap = { en: "en-US", es: "es-ES", fr: "fr-FR", it: "it-IT", pt: "pt-BR" };
+      const langMap = { en: "en-US", es: "es-ES", fr: "fr-FR", it: "it-IT", pt: "pt-PT" };
       rec.lang = langMap[langState.target] || "en-US";
       rec.onresult = (ev) => {
         const t = ev.results[0][0].transcript;
@@ -2274,7 +2313,7 @@ function bindChatHub() {
 }
 
 
-// ---------- CEOS v7 Agency + v8 Adaptive Dialogue ----------
+// ---------- CEOS v7 Agency + v8 Adaptive Dialogue + v9 Fractal Mind ----------
 async function loadAgencyDashboard(){
   const ids = ["agency-summary","agency-goals","agency-initiatives","agency-experiments","agency-gaps"];
   ids.forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent="Cargando…"; });
@@ -2338,5 +2377,88 @@ if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded"
 setTimeout(bindAgencyUI,1000);
 
 
-// CEOS v8.1 — diagnóstico LLM
+// CEOS v8.3 — diagnóstico LLM
 document.getElementById("btn-llm-check")?.addEventListener("click", () => { checkLLMApi().catch(() => {}); });
+
+
+// ---------- CEOS v9 · Laboratorio de Autor ----------
+let lastAuthorReport = null;
+
+function renderAuthorList(id, items, emptyText){
+  const box=document.getElementById(id); if(!box) return;
+  if(!items || !items.length){ box.innerHTML=`<span class="muted">${escapeHtml(emptyText)}</span>`; return; }
+  box.innerHTML=items.map(x=>`<div class="agency-item">${escapeHtml(String(x))}</div>`).join("");
+}
+
+async function loadAuthorCorpus(){
+  const name=(document.getElementById("author-name")?.value||"").trim();
+  try{
+    const r=await api(`/api/author/corpus?author=${encodeURIComponent(name)}`);
+    const box=document.getElementById("author-summary");
+    if(box) box.innerHTML=`<div><strong>Corpus</strong><br>${(r.documents||[]).length} documentos</div>`+
+      `<div><strong>Autor</strong><br>${escapeHtml(name||"corpus abierto")}</div>`+
+      `<div><strong>Modo</strong><br>laboratorio crítico</div>`+
+      `<div><strong>CRONOS</strong><br>estructural + literario</div>`;
+    return r.documents||[];
+  }catch(e){
+    const box=document.getElementById("author-summary"); if(box) box.textContent="No se pudo leer el corpus: "+e.message;
+    return [];
+  }
+}
+
+function renderAuthorReport(r){
+  lastAuthorReport=r||null;
+  const report=document.getElementById("author-report");
+  if(report){
+    let txt=r.llm_report || r.summary || "";
+    if(!r.llm_report){
+      txt += "\n\nBONDADES:\n- " + (r.strengths||[]).join("\n- ");
+      txt += "\n\nRIESGOS:\n- " + (r.risks||[]).join("\n- ");
+      txt += "\n\nPRIORIDADES:\n" + (r.priorities||[]).map((x,i)=>`${i+1}. ${x.area}: ${x.why}\n   Prueba: ${x.exercise}`).join("\n");
+    }
+    report.textContent=txt || "Sin diagnóstico.";
+  }
+  renderAuthorList("author-strengths", (r.strengths||[]).map(x=>"✓ "+x), "No hay bondades registradas.");
+  renderAuthorList("author-risks", (r.risks||[]).map(x=>"↗ "+x), "No hay riesgos registrados.");
+  const c=document.getElementById("author-cronos"); if(c) c.textContent=JSON.stringify(r.cronos||{},null,2);
+  const summary=document.getElementById("author-summary");
+  if(summary){
+    const m=r.metrics||{};
+    summary.innerHTML=`<div><strong>Documentos</strong><br>${(r.documents||[]).length}</div>`+
+      `<div><strong>Palabras analizadas</strong><br>${m.words||"—"}</div>`+
+      `<div><strong>Frase media</strong><br>${m.avg_sentence_words||"—"} palabras</div>`+
+      `<div><strong>Motor</strong><br>${escapeHtml(r.engine||"—")}</div>`+
+      `<div><strong>CRONOS</strong><br>${escapeHtml((r.cronos?.dominant_operators||[]).join(", ")||"sin señal")}</div>`;
+  }
+}
+
+async function analyzeAuthor(){
+  const author=(document.getElementById("author-name")?.value||"").trim();
+  const focus=(document.getElementById("author-focus")?.value||"obra completa").trim();
+  const useLLM=!!document.getElementById("author-use-llm")?.checked;
+  const report=document.getElementById("author-report");
+  if(report) report.textContent="Leyendo el corpus, comparando muestras y construyendo el diagnóstico…";
+  try{
+    await loadAuthorCorpus();
+    const r=await api("/api/author/analyze",{method:"POST",body:JSON.stringify({author,focus,use_llm:useLLM})});
+    renderAuthorReport(r);
+  }catch(e){ if(report) report.textContent="No se pudo completar el análisis: "+e.message; }
+}
+
+async function authorLesson(){
+  const box=document.getElementById("author-lesson");
+  if(!box) return;
+  if(!lastAuthorReport){ box.textContent="Primero ejecuta el diagnóstico."; return; }
+  try{
+    const r=await api("/api/author/lesson",{method:"POST",body:JSON.stringify({report:lastAuthorReport})});
+    box.innerHTML=`<strong>${escapeHtml(r.title||"Ejercicio")}</strong><p>${escapeHtml(r.objective||"")}</p><p><strong>Prueba:</strong> ${escapeHtml(r.exercise||"")}</p><p class="muted">${escapeHtml(r.method||"")}</p>`;
+  }catch(e){ box.textContent="No se pudo generar la lección: "+e.message; }
+}
+
+function bindAuthorUI(){
+  const a=document.getElementById("btn-author-analyze"); if(a&&!a.__bound){a.__bound=true;a.addEventListener("click",()=>analyzeAuthor());}
+  const l=document.getElementById("btn-author-lesson"); if(l&&!l.__bound){l.__bound=true;l.addEventListener("click",()=>authorLesson());}
+  const name=document.getElementById("author-name"); if(name&&!name.__bound){name.__bound=true;name.addEventListener("change",()=>loadAuthorCorpus());}
+}
+if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",bindAuthorUI);}else{bindAuthorUI();}
+setTimeout(bindAuthorUI,1000);

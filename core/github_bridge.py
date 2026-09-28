@@ -95,7 +95,7 @@ class GitHubBridge:
         headers = {
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": API_VERSION,
-            "User-Agent": "CEOS-Agency/7.0",
+            "User-Agent": "CEOS-Living-Entity/8.3",
         }
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"

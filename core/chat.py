@@ -109,7 +109,7 @@ class ChatSession:
 class ConversationalEngine:
     """Motor de diálogo fluido de CEOS."""
 
-    def __init__(self, mentor, codex, memory, user_profile, identity, base_path: str, long_memory=None, library=None, life=None, agency=None, adaptive=None):
+    def __init__(self, mentor, codex, memory, user_profile, identity, base_path: str, long_memory=None, library=None, life=None, agency=None, adaptive=None, author_lab=None, fractal_mind=None, coevolution=None):
         self.mentor = mentor
         self.codex = codex
         self.memory = memory
@@ -120,6 +120,9 @@ class ConversationalEngine:
         self.life = life
         self.agency = agency
         self.adaptive = adaptive or AdaptiveCore(str(Path(base_path).parent / "adaptive"))
+        self.author_lab = author_lab
+        self.fractal_mind = fractal_mind
+        self.coevolution = coevolution
         self.store = ChatSession(base_path)
 
     def new_session_id(self) -> str:
@@ -139,7 +142,7 @@ class ConversationalEngine:
         self.store.save(session)
         return {"ok": True, "session_id": session_id, "messages": []}
 
-    def _build_context_pack(self, user_text: str) -> str:
+    def _build_context_pack(self, user_text: str, *, light: bool = False) -> str:
         """Contexto compacto y relevante para el turno actual."""
         parts = []
 
@@ -198,7 +201,7 @@ class ConversationalEngine:
                 pass
 
         # Agencia v7: objetivos, iniciativas y lagunas de modelo.
-        if self.agency is not None:
+        if self.agency is not None and not light:
             try:
                 block = self.agency.context_block(limit=4)
                 if block:
@@ -212,76 +215,76 @@ class ConversationalEngine:
         except Exception:
             pass
 
+        # Mente Fractal v9: recuperar conocimiento estructural pertinente.
+        if self.fractal_mind is not None and not light:
+            try:
+                fctx = self.fractal_mind.context_block(user_text, limit=8)
+                if fctx:
+                    parts.append(fctx)
+            except Exception:
+                pass
+
+        # Grafo Vivo v10: modelo explícito de usuario–obra–conocimiento y siguiente movimiento.
+        if self.coevolution is not None and not light:
+            try:
+                cctx = self.coevolution.context_block(user_text, limit=7)
+                if cctx:
+                    parts.append(cctx)
+            except Exception:
+                pass
+
         # Doctrina (siempre, compacta)
-        try:
-            from .constitution import as_context_block
-            parts.append(as_context_block())
-        except Exception:
-            pass
+        if not light:
+            try:
+                from .constitution import as_context_block
+                parts.append(as_context_block())
+            except Exception:
+                pass
         _low_ctx = (user_text or "").lower()
         if re.search(r"\b(cronos|protocolo|espiral|membrana|arquetipo|régimen|regimen)\b", _low_ctx):
             parts.append("DOCTRINA CRONOS (núcleo):" + chr(10) + chr(10).join(f"- {d}" for d in CORE_DOCTRINE[:8]))
 
         # Codex relacionado
-        try:
-            lines = []
-            # Expandir tema si hay mapa
-            exp = self.codex.expand_topic(user_text[:80]) if hasattr(self.codex, "expand_topic") else None
-            if isinstance(exp, dict) and exp.get("ok"):
-                for f in (exp.get("fragments") or [])[:5]:
-                    lines.append(f"· {str(f)[:240]}")
-                for m in (exp.get("molecules") or [])[:4]:
-                    if isinstance(m, dict):
-                        lines.append(f"· {m.get('formula','')}: {m.get('meaning','')[:160]}")
-            # Átomos (dict nombre → definición)
-            atoms = self.codex.list_atoms() if hasattr(self.codex, "list_atoms") else {}
-            if isinstance(atoms, dict):
-                keys = set(re.findall(r"\w{4,}", user_text.lower()))
-                scored = []
-                for name, definition in atoms.items():
-                    blob = f"{name} {definition}".lower()
-                    score = sum(1 for k in keys if k in blob)
-                    if score:
-                        scored.append((score, name, definition))
-                scored.sort(key=lambda x: -x[0])
-                for _, name, definition in scored[:6]:
-                    lines.append(f"· {name}: {str(definition)[:200]}")
-            if lines:
-                # dedupe preserving order
-                seen = set()
-                uniq = []
-                for ln in lines:
-                    if ln not in seen:
-                        seen.add(ln)
-                        uniq.append(ln)
-                parts.append("CÓDEX RELEVANTE:\n" + "\n".join(uniq[:8]))
-        except Exception:
-            pass
+        if not light:
+            try:
+                if hasattr(self.codex, "expand_topic"):
+                    exp = self.codex.expand_topic(user_text[:100])
+                    if isinstance(exp, dict) and exp.get("ok"):
+                        lines = []
+                        atoms = (exp.get("atoms") or {})
+                        for name, definition in list(atoms.items())[:6]:
+                            lines.append(f"· {name}: {str(definition)[:200]}")
+                        if lines:
+                            parts.append("CÓDEX RELEVANTE:\n" + "\n".join(lines))
+            except Exception:
+                pass
 
         # Casos recientes
-        try:
-            cases = self.memory.cases() if hasattr(self.memory, "cases") else []
-            if cases:
-                recent = cases[-4:]
-                lines = []
-                for c in recent:
-                    ident = (c.get("identidad") or "")[:80]
-                    arq = c.get("arquetipo") or "?"
-                    lines.append(f"· [{arq}] {ident}")
-                parts.append("CASOS RECIENTES:\n" + "\n".join(lines))
-        except Exception:
-            pass
+        if not light:
+            try:
+                cases = self.memory.cases() if hasattr(self.memory, "cases") else []
+                if cases:
+                    recent = cases[-4:]
+                    lines = []
+                    for c in recent:
+                        ident = (c.get("identidad") or "")[:80]
+                        arq = c.get("arquetipo") or "?"
+                        lines.append(f"· [{arq}] {ident}")
+                    parts.append("CASOS RECIENTES:\n" + "\n".join(lines))
+            except Exception:
+                pass
 
         # Fragmentos de biblioteca / mentor
-        try:
-            frags = self.mentor._pick_knowledge(user_text, n=4) if hasattr(self.mentor, "_pick_knowledge") else []
-            if frags:
-                parts.append("FRAGMENTOS BIBLIOTECA:" + chr(10) + (chr(10) + "---" + chr(10)).join(str(f)[:300] for f in frags[:4]))
-        except Exception:
-            pass
+        if not light:
+            try:
+                frags = self.mentor._pick_knowledge(user_text, n=4) if hasattr(self.mentor, "_pick_knowledge") else []
+                if frags:
+                    parts.append("FRAGMENTOS BIBLIOTECA:" + chr(10) + (chr(10) + "---" + chr(10)).join(str(f)[:300] for f in frags[:4]))
+            except Exception:
+                pass
 
         # RESERVORIO: lectura anclada (núcleo del bucle cerrado)
-        if self.library is not None and len((user_text or "").strip()) >= 8:
+        if self.library is not None and not light and len((user_text or "").strip()) >= 8:
             try:
                 low = user_text.lower()
                 lens = "general"
@@ -323,6 +326,24 @@ class ConversationalEngine:
 
         return (chr(10) + chr(10)).join(parts)
 
+
+    def _is_casual_turn(self, t: str, history: list | None = None) -> bool:
+        """Detecta charla cotidiana para no convertirla en una tarea de análisis."""
+        text=(t or "").strip().lower()
+        if not text:
+            return True
+        if re.search(r"\b(cronos|espiral|oca|astroteolog|gnosis|astrolog|nietzsche|cervantes|lope|bruno|bechamp|peral|lakhovsky|forma 333|sad|tubería|tuberia|libro|novela|cuento|obra|patente|invento|reología|energia|energía)\b", text):
+            return False
+        casual_patterns=(
+            r"^(hola|buenas|hey|qué tal|que tal|buenos días|buenas tardes|buenas noches|gracias|de nada|adiós|hasta luego|jajaja|jajaja|jeje|je)\b",
+            r"\b(cómo estás|como estas|qué haces|que haces|qué tal vas|que tal vas|estás ahí|estas ahi|qué día|que dia|qué cuentas|que cuentas)\b",
+            r"^(vale|ok|sí|si|no|claro|perfecto|genial|bien|estupendo|ya|entiendo|entiendo|seguimos)\W*$",
+        )
+        if any(re.search(p,text) for p in casual_patterns):
+            return True
+        if len(text) <= 55 and not re.search(r"\b(analiza|explica|desarrolla|compara|investiga|enseña|estudia|demuestra|calcula|cómo funciona|que es|qué es)\b", text):
+            return True
+        return False
 
     def _is_literature_query(self, t: str) -> bool:
         return bool(re.search(
@@ -609,6 +630,15 @@ class ConversationalEngine:
         def follow_up(options):
             return " " + options
 
+        # --- conversación cotidiana ---
+        if self._is_casual_turn(raw, history):
+            if re.search(r"\b(cómo estás|como estas|qué haces|que haces|estás ahí|estas ahi)\b", t):
+                return f"{hello}Sí, aquí estoy. Operativo y contigo. Podemos hablar sin necesidad de convertir cada conversación en un proyecto."
+            if re.search(r"\b(gracias|de nada)\b", t) and len(t) < 40:
+                return "De nada. Me alegra que sigamos construyendo esto."
+            if re.search(r"\b(jaj|jeje|jeje|jaja)\b", t):
+                return f"{hello}😄 Te sigo. A veces viene bien dejar descansar la ingeniería y hablar un rato sin más."
+
         # --- saludos ---
         if re.match(
             r"^(hola|buenas|hey|qué tal|que tal|buenos días|buenas tardes|buenas noches|hi)([!?.\s]*)$",
@@ -634,9 +664,7 @@ class ConversationalEngine:
             return (
                 f"Hola{', ' + name if name else ''}. Aquí estoy, en conversación contigo."
                 + tail
-                + follow_up(
-                    "¿Seguimos con tus textos, con el protocolo CRONOS, o con algo que te ronda ahora?"
-                )
+                + " ¿Qué tal va la mañana?"
             )
 
         if re.search(r"\b(gracias|thank you|thanks)\b", t) and len(t) < 40:
@@ -822,12 +850,24 @@ class ConversationalEngine:
             "Usa memoria, contexto y aprendizaje acumulado de forma natural, sin anunciar constantemente que lo haces. "
             "Aprendes de correcciones y confirmaciones: cuando el usuario corrige algo, intégralo en la siguiente respuesta. "
             "Si una pregunta sigue abierta, intenta recogerla más adelante. No inventes hechos ni fuentes. "
+            "En charla cotidiana no conviertas una banalidad en una clase, un diagnóstico o una lista. Puedes simplemente conversar, bromear con prudencia, responder a un comentario y dejar un hilo abierto sin exigir una pregunta al usuario. No tienes que pedir siempre seguimiento. "
+            "Mantén también continuidad entre sus obras literarias y sus inventos (FORMA 333/Olla lenta y SAD/Tubería) cuando sea pertinente, pero nunca los introduzcas de forma artificial. "
             "No afirmes conciencia subjetiva: la identidad de CEOS es continuidad funcional, memoria, aprendizaje y agencia acotada. "
             f"Modo actual: {dialogue_mode}; intención: {intent}; foco: {topic or 'conversación abierta'}. "
         )
         if dialogue_mode == "teach" or intent == "teach":
             try:
                 system += "\n\n" + self.adaptive.teaching_directive(topic)
+            except Exception:
+                pass
+        if dialogue_mode == "author" or intent == "author":
+            try:
+                system += "\n\n" + self.adaptive.author_directive(topic)
+            except Exception:
+                pass
+        if self.fractal_mind is not None:
+            try:
+                system += "\n\n" + self.fractal_mind.teacher_apprentice_directive(topic)
             except Exception:
                 pass
         api_msgs.append({"role": "system", "content": system})
@@ -883,29 +923,18 @@ class ConversationalEngine:
         """
         text = (user_text or "").strip()
         low = text.lower()
-        if web_flag is False:
-            return False
         if any(x in low for x in ("sin internet", "no busques", "no buscar", "solo corpus", "solo local", "offline")):
             return False
-        # Meta / conversación sobre el propio sistema → local
         if self._is_self_reflection(low):
             return False
-        if re.match(
-            r"^(hola|hi|hey|buenas|buenos d[ií]as|buenas tardes|buenas noches|ok|vale|gracias|adi[oó]s|hasta luego)[!?.\s]*$",
-            low,
-        ):
+        if re.match(r"^(hola|hi|hey|buenas|buenos d[ií]as|buenas tardes|buenas noches|ok|vale|gracias|adi[oó]s|hasta luego)[!?.\s]*$", low):
             return False
-        # Pedido explícito de búsqueda
-        if re.search(
-            r"\b(busca en internet|investiga|navega|busca informaci[oó]n|qu[eé] dice la web|en internet)\b",
-            low,
-        ):
+        # Pedido explícito de búsqueda: se impone incluso sin marcar la casilla.
+        if re.search(r"\b(busca en internet|investiga|navega|busca informaci[oó]n|qu[eé] dice la web|en internet)\b", low):
             return True
-        # Pregunta de conocimiento general (no sobre "tú/CEOS")
-        if re.search(r"\b(qu[eé] es|qui[eé]n es|c[oó]mo funciona|historia de|definici[oó]n)\b", low):
+        if web_flag and re.search(r"\b(qu[eé] es|qui[eé]n es|c[oó]mo funciona|historia de|definici[oó]n|actualidad|últim[oa]s?|hoy|esta semana|reciente)\b", low):
             if not re.search(r"\b(has aprendido|aprendiste|tu memoria|tu c[oó]dice|reservorio)\b", low):
                 return True
-        # Por defecto: conversar en local (corpus + reservorio + memoria)
         return False
 
     def _is_self_reflection(self, low: str) -> bool:
@@ -948,6 +977,15 @@ class ConversationalEngine:
         except Exception:
             pass
         lines.append("Te respondo desde lo que tengo en memoria local (no desde una búsqueda web vacía).")
+
+        if self.fractal_mind is not None:
+            try:
+                fs = self.fractal_mind.status()
+                lines.append(
+                    f"**Mente Fractal:** {fs.get('nodes',0)} nodos · generación {fs.get('generation',0)} · nivel {fs.get('max_level',0)} · cápsula {fs.get('encryption','none')}."
+                )
+            except Exception:
+                pass
         if self.life is not None:
             try:
                 st = self.life.snapshot()
@@ -1081,6 +1119,7 @@ class ConversationalEngine:
         history = session.get("messages") or []
         adaptive_analysis = self.adaptive.analyze_turn(user_text, history=history, explicit_mode=mode)
         dialogue_mode = adaptive_analysis.get("mode") or "organic"
+        casual_turn = self._is_casual_turn(user_text, history) and mode == "organic"
         want_long = self._wants_long(user_text, long)
         want_web = self._wants_web(user_text, web)
         web_meta = None
@@ -1112,7 +1151,7 @@ class ConversationalEngine:
             "device": device_id,
         })
 
-        context = self._build_context_pack(user_text)
+        context = self._build_context_pack(user_text, light=casual_turn)
         if meta_portrait:
             context = context + "\n\nRETRATO IDENTIDAD-MEMORIA:\n" + meta_portrait[:3000]
         if want_web:
@@ -1144,26 +1183,28 @@ class ConversationalEngine:
             engine = llm_result.get("engine", "llm")
             mode = "llm"
         else:
-            if dialogue_mode == "teach" or adaptive_analysis.get("intent") == "teach":
+            if (dialogue_mode == "author" or adaptive_analysis.get("intent") == "author") and self.author_lab is not None:
+                try:
+                    profile = self.user.get() or {}
+                    author_name = profile.get("display_name") or profile.get("name") or ""
+                    ar = self.author_lab.analyze(author=author_name, focus=user_text[:160], use_llm=False)
+                    strengths = (ar.get("strengths") or [])[:3]
+                    risks = (ar.get("risks") or [])[:3]
+                    nxt = ((ar.get("teaching") or {}).get("next") or {})
+                    answer = (
+                        "Voy a tratarlo como un laboratorio de autor, no como una opinión rápida.\n\n"
+                        + "Lo que veo con más claridad: " + " ".join(str(x) for x in strengths) + "\n\n"
+                        + "Donde apretaría primero: " + " ".join(str(x) for x in risks) + "\n\n"
+                        + "Primera prueba: " + str(nxt.get("exercise") or "reescribe una escena reduciéndola y compara qué se pierde y qué gana.")
+                    )
+                except Exception:
+                    answer = self._local_reply(user_text, history, context)
+            elif dialogue_mode == "teach" or adaptive_analysis.get("intent") == "teach":
                 answer = self._local_teaching_reply(user_text, history, context, adaptive_analysis)
             else:
                 answer = self._local_reply(user_text, history, context)
-            # Transparencia útil: diferenciar credencial, modelo/permisos y cuota.
-            hint = llm_result.get("hint") or llm_result.get("error")
-            if hint and llm_result.get("error") not in (None, "sin_api"):
-                low = str(hint).lower()
-                if "401" in low or "no autorizado" in low:
-                    note = "La API rechazó la credencial (401). Comprueba/regenera la clave del proveedor."
-                elif "403" in low:
-                    if "model" in low or "permission" in low or "prohibido" in low or "retirado" in low:
-                        note = "El proveedor rechazó el modelo o sus permisos (403). CEOS v8.1 prueba automáticamente otros modelos actuales."
-                    else:
-                        note = "El proveedor devolvió 403 por permisos o credenciales. Usa «Comprobar API» para diagnosticarlo."
-                elif "429" in low:
-                    note = "El proveedor ha alcanzado temporalmente su cuota/límite (429)."
-                else:
-                    note = "El LLM no respondió; CEOS continúa con su motor local de respaldo."
-                answer = answer + "\n\n(Nota técnica: " + note + ")"
+            # La conversación permanece orgánica: el diagnóstico técnico se devuelve en metadatos,
+            # no se incrusta dentro de la respuesta que está leyendo la persona.
             if want_web and web_meta and web_meta.get("ok"):
                 # Incorporar hallazgos de red de forma explícita en la respuesta
                 extra_web = ""
@@ -1207,7 +1248,7 @@ class ConversationalEngine:
                 )
             except Exception:
                 life_response = None
-        if self.agency is not None:
+        if self.agency is not None and not casual_turn:
             try:
                 self.agency.observe_experience(kind="assistant_turn", text=answer, source="ceos", metadata={"session_id": session_id, "engine": engine})
             except Exception:
@@ -1221,6 +1262,32 @@ class ConversationalEngine:
             except Exception:
                 pass
 
+        # Aprendizaje fractal v9: cada interacción significativa alimenta la autobiografía cognitiva estructural.
+        if self.fractal_mind is not None and not casual_turn:
+            try:
+                self.fractal_mind.learn_turn(
+                    user_text, answer, topic=adaptive_analysis.get("topic", ""), engine=engine
+                )
+                # Consolidación ligera cada cierto número de generaciones.
+                fs = self.fractal_mind.status()
+                if fs.get("generation",0) and fs.get("generation",0) % 17 == 0:
+                    self.fractal_mind.consolidate(topic=adaptive_analysis.get("topic", ""))
+            except Exception:
+                pass
+
+        # Coevolución v10: registrar cómo esta interacción modifica el modelo relacional.
+        coevolution_observation = None
+        if self.coevolution is not None:
+            try:
+                if casual_turn:
+                    coevolution_observation = self.coevolution.record_casual_turn(user_text, answer)
+                else:
+                    coevolution_observation = self.coevolution.observe(
+                        user_text, answer, topic=adaptive_analysis.get("topic", ""), mode=dialogue_mode
+                    )
+            except Exception:
+                coevolution_observation = None
+
         # Aprendizaje adaptativo v8: cada turno modifica de forma incremental el modelo conversacional.
         try:
             self.adaptive.update_after_turn(
@@ -1232,6 +1299,18 @@ class ConversationalEngine:
         except Exception:
             pass
 
+        # Estado conversacional persistente: mantiene continuidad sin convertir cada banalidad en aprendizaje estructural.
+        session.setdefault("conversation_state", {})
+        cstate = session["conversation_state"]
+        cstate["last_intent"] = adaptive_analysis.get("intent", "conversation")
+        cstate["last_topic"] = adaptive_analysis.get("topic", "")
+        cstate["last_mode"] = dialogue_mode
+        cstate["last_casual"] = bool(casual_turn)
+        cstate["turns"] = int(cstate.get("turns", 0)) + 1
+        if user_text:
+            cstate["last_user_preview"] = user_text[:220]
+        cstate["last_answer_preview"] = answer[:260]
+        cstate["updated_at"] = _now()
         # Limitar tamaño de historial persistido
         if len(history) > 80:
             history = history[-80:]
@@ -1249,6 +1328,11 @@ class ConversationalEngine:
             "session_id": session_id,
             "reply": answer,
             "engine": engine,
+            "llm_diagnostics": ({
+                "ok": bool(llm_result.get("ok")),
+                "diagnosis": llm_result.get("diagnosis") or llm_result.get("error"),
+                "provider_errors": llm_result.get("provider_errors") or [],
+            } if isinstance(llm_result, dict) else None),
             "mode": mode,
             "long": want_long,
             "web": want_web,
@@ -1259,11 +1343,14 @@ class ConversationalEngine:
             "life_response": life_response,
             "agency": (self.agency.snapshot() if self.agency is not None else None),
             "adaptive": self.adaptive.profile_snapshot(),
+            "coevolution": coevolution_observation or (self.coevolution.snapshot() if self.coevolution is not None else None),
             "dialogue": adaptive_analysis,
+            "casual": bool(casual_turn),
             "memory": {
                 "absorbed_facts": len(absorbed.get("facts") or []),
                 "absorbed_topics": len(absorbed.get("topics") or []),
                 "stats": self.long_memory.stats() if self.long_memory is not None else {},
             },
             "fractal": self.codex.fractal_state() if hasattr(self.codex, "fractal_state") else {},
+            "mind": (self.fractal_mind.status() if self.fractal_mind is not None else None),
         }

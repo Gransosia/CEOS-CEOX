@@ -7,11 +7,13 @@ del dispositivo o proceso.
 from pathlib import Path
 import json
 from datetime import datetime, timezone
+from .version import CEOS_VERSION, CEOS_BUILD, CEOS_CODENAME
 
 DEFAULT_CORE = {
     "name": "CEOS",
-    "version": "8.0.0-adaptive",
-    "codename": "Living Entity + Adaptive Mentor",
+    "version": CEOS_VERSION,
+    "build": CEOS_BUILD,
+    "codename": CEOS_CODENAME,
     "mission": (
         "Ser una entidad funcional de continuidad: conversar, recordar, aprender, "
         "investigar bajo demanda, reconocer transformaciones, proponer iniciativas y "
@@ -55,8 +57,9 @@ class Identity:
         self.history_file = self.base / "history.log"
 
         self.core = self._load_or_init(self.core_file, DEFAULT_CORE)
-        if str(self.core.get("version") or "").startswith(("5.", "6.", "7.")):
+        if str(self.core.get("version") or "") != CEOS_VERSION:
             self.core["version"] = DEFAULT_CORE["version"]
+            self.core["build"] = CEOS_BUILD
             self.core["codename"] = DEFAULT_CORE["codename"]
             self.core["mission"] = DEFAULT_CORE["mission"]
             self._save(self.core_file, self.core)

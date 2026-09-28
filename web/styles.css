@@ -975,3 +975,59 @@ button.ghost:hover { color: var(--text); border-color: rgba(255,255,255,0.18); }
 .badge-proposed{display:inline-block;padding:2px 7px;border-radius:99px;border:1px solid rgba(56,189,248,.35);font-size:.75rem}
 .badge-accepted{display:inline-block;padding:2px 7px;border-radius:99px;border:1px solid rgba(74,222,128,.35);font-size:.75rem}
 .badge-open{display:inline-block;padding:2px 7px;border-radius:99px;border:1px solid rgba(250,204,21,.35);font-size:.75rem}
+
+/* ---------- CEOS v10.2 — conversación continua ---------- */
+.bubble-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 6px;
+  opacity: .55;
+}
+.bubble-actions button {
+  margin: 0;
+  padding: 2px 7px;
+  min-width: 28px;
+  background: transparent;
+  border-color: var(--border);
+  color: var(--muted);
+  font-size: .75rem;
+}
+.bubble-actions button:hover { color: var(--text); border-color: var(--accent); }
+.bubble-actions button:disabled { opacity: .45; cursor: default; }
+.chat-bubble.feedback-given .bubble-actions { opacity: .28; }
+
+/* ---------- CEOS v10.2 — mapa visual ---------- */
+.graph-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0;
+}
+.graph-toolbar input { flex: 1 1 auto; }
+.graph-toolbar button { margin-top: 0; flex: 0 0 auto; }
+.coevolution-graph-canvas {
+  width: 100%;
+  min-height: 560px;
+  overflow: auto;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px;
+  color: var(--accent);
+}
+.coevo-svg { width: 100%; min-width: 760px; height: 560px; display: block; }
+.graph-node text { fill: var(--text); font-size: 12px; pointer-events: none; }
+.graph-node circle { transition: transform .15s ease, fill-opacity .15s ease; transform-box: fill-box; transform-origin: center; }
+.graph-node:hover circle { transform: scale(1.08); fill-opacity: .28; }
+.graph-legend { padding: 8px 10px; color: var(--muted); font-size: .75rem; }
+@media (max-width: 640px) {
+  .graph-toolbar { flex-direction: column; align-items: stretch; }
+  .graph-toolbar button { width: 100%; }
+  .coevolution-graph-canvas { min-height: 470px; }
+  .coevo-svg { height: 470px; }
+}
+
+/* v10.3 — ruta portuguesa profesional */
+.lang-program { margin: 10px 0 14px; line-height: 1.45; }
+.lang-program .chip { display:inline-block; margin:3px 5px 3px 0; }
